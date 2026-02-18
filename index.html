@@ -5,6 +5,49 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GhostGuitar - AI Guitar Learning</title>
+    <!--
+      Global error trap: runs BEFORE React, catches any uncaught error
+      (module load failures, import 404s, WebGL crashes, etc.) and
+      renders the error directly into the DOM so we never get a silent
+      blank page again.
+    -->
+    <script>
+      (function () {
+        var errors = [];
+        function show() {
+          var el = document.getElementById('__ghost_errors');
+          if (!el) {
+            el = document.createElement('div');
+            el.id = '__ghost_errors';
+            el.style.cssText =
+              'position:fixed;bottom:0;left:0;right:0;max-height:40vh;overflow:auto;' +
+              'background:#1a0000;color:#f87171;font:12px/1.6 monospace;padding:12px 16px;z-index:99999;' +
+              'border-top:2px solid #7f1d1d';
+            document.body.appendChild(el);
+          }
+          el.innerHTML =
+            '<strong>[GhostGuitar] Runtime errors (' +
+            errors.length +
+            '):</strong><br>' +
+            errors
+              .map(function (e) {
+                return '• ' + e;
+              })
+              .join('<br>');
+        }
+        window.onerror = function (msg, src, line, col) {
+          errors.push(msg + ' (' + (src || '?') + ':' + line + ':' + col + ')');
+          show();
+        };
+        window.onunhandledrejection = function (ev) {
+          errors.push(
+            'Unhandled promise: ' +
+              (ev.reason && ev.reason.message ? ev.reason.message : String(ev.reason))
+          );
+          show();
+        };
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
