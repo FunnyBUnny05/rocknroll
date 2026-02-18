@@ -1,68 +1,131 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { GhostFretboard } from './components/fretboard/GhostFretboard';
 import { PlaybackControls } from './components/player/PlaybackControls';
-import { FileUpload } from './components/ui/FileUpload';
+import { SpotifyLoginButton } from './components/spotify/SpotifyLoginButton';
+import { SpotifySearch } from './components/spotify/SpotifySearch';
+import { SpotifyNowPlaying } from './components/spotify/SpotifyNowPlaying';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { useGhostStore } from './store/useGhostStore';
+import { useSpotifyStore } from './store/useSpotifyStore';
 import { transcribeAudio } from './services/transcriptionPipeline';
-import { audioEngine } from './engine/audioEngine';
-import type { TranscriptionProgress } from './services/basicPitchTranscriber';
+import { isAuthenticated as checkAuth, getAccessToken } from './services/SpotifyAuth';
+import { getCurrentUser } from './services/SpotifyService';
+import {
+  initializePlayer,
+  onPlayerStateChange,
+  onDeviceReady,
+  onPlayerError,
+} from './services/SpotifyPlayer';
+import {
+  generateChordProgression,
+  guessProgression,
+} from './services/chordDetection';
+import type { Song } from './types/song';
 
 function App() {
-  const { song, loadSong } = useGhostStore();
-  const [progress, setProgress] = useState<TranscriptionProgress | null>(null);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { song, loadSong, tick } = useGhostStore();
+  const {
+    isAuthenticated: isSpotifyAuth,
+    currentTrack,
+    isSpotifyPlaying,
+    error: spotifyError,
+    setAuthenticated,
+    setUser,
+    setDeviceId,
+    setPlayerReady,
+    updatePlaybackState,
+    setError: setSpotifyError,
+  } = useSpotifyStore();
 
-  useEffect(() => {
-    console.log('[GhostGuitar] App mounted - initializing');
-  }, []);
+  const [demoLoaded, setDemoLoaded] = useState(false);
 
-  // Load demo song on mount
+  // Check if already authenticated on mount
   useEffect(() => {
-    console.log('[GhostGuitar] Loading demo song...');
-    transcribeAudio('demo').then((demoSong) => {
-      console.log('[GhostGuitar] Demo song loaded:', demoSong.title);
-      loadSong(demoSong);
+    if (checkAuth() && getAccessToken()) {
+      setAuthenticated(true);
+      getCurrentUser()
+        .then((user) => setUser(user))
+        .catch(console.error);
+    }
+  }, [setAuthenticated, setUser]);
+
+  // Initialize Spotify player when authenticated
+  useEffect(() => {
+    if (!isSpotifyAuth) return;
+
+    initializePlayer().catch(console.error);
+
+    onDeviceReady((deviceId) => {
+      setDeviceId(deviceId);
+      setPlayerReady(true);
     });
-  }, [loadSong]);
 
-  const handleFileSelected = useCallback(
-    async (file: File) => {
-      setIsTranscribing(true);
-      setError(null);
-      setProgress({ percent: 0, stage: 'loading' });
+    onPlayerStateChange((state) => {
+      updatePlaybackState(state);
+      // Sync Spotify position with GhostStore for fretboard animation
+      tick(state.positionMs / 1000);
+    });
 
-      console.log('[GhostGuitar] File selected:', file.name, `(${(file.size / 1024 / 1024).toFixed(1)}MB)`);
+    onPlayerError((message) => {
+      setSpotifyError(message);
+    });
+  }, [isSpotifyAuth, setDeviceId, setPlayerReady, updatePlaybackState, setSpotifyError, tick]);
 
-      try {
-        // Dynamic import - only loads TF.js + Basic Pitch when user drops a file
-        const { transcribeWithBasicPitch } = await import(
-          './services/basicPitchTranscriber'
-        );
+  // When a Spotify track starts playing, generate chord events for the ghost hand
+  useEffect(() => {
+    if (!currentTrack || !isSpotifyPlaying) return;
 
-        const transcribedSong = await transcribeWithBasicPitch(file, setProgress);
-        console.log('[GhostGuitar] Transcription complete:', transcribedSong.tracks.professional.events.length, 'events');
+    const progression = guessProgression(
+      currentTrack.name,
+      currentTrack.artists.map((a) => a.name).join(', ')
+    );
+    const events = generateChordProgression(
+      currentTrack.duration_ms,
+      4,
+      120,
+      progression
+    );
 
-        // Load the actual audio into the playback engine
-        await audioEngine.load(file);
-        console.log('[GhostGuitar] Audio engine loaded, duration:', audioEngine.duration.toFixed(1) + 's');
+    const spotifySong: Song = {
+      id: `spotify-${currentTrack.id}`,
+      title: currentTrack.name,
+      artist: currentTrack.artists.map((a) => a.name).join(', '),
+      duration: currentTrack.duration_ms / 1000,
+      bpm: 120,
+      timeSignature: [4, 4],
+      audioSrc: currentTrack.uri,
+      tuning: ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'],
+      capo: 0,
+      tracks: {
+        beginner: { events, tempoMultiplier: 0.75 },
+        professional: { events, tempoMultiplier: 1.0 },
+      },
+      metadata: {
+        confidence: 0.7,
+        transcriptionEngine: 'spotify-chords',
+        transcribedAt: new Date().toISOString(),
+      },
+    };
 
-        // Update duration from actual audio
-        transcribedSong.duration = audioEngine.duration;
+    loadSong(spotifySong);
+  }, [currentTrack, isSpotifyPlaying, loadSong]);
 
-        loadSong(transcribedSong);
-      } catch (err) {
-        console.error('[GhostGuitar] Transcription failed:', err);
-        setError(
-          err instanceof Error ? err.message : 'Transcription failed'
-        );
-      } finally {
-        setIsTranscribing(false);
+  // Load demo song on mount (only if not using Spotify)
+  useEffect(() => {
+    if (isSpotifyAuth || demoLoaded) return;
+    let cancelled = false;
+
+    transcribeAudio('demo').then((demoSong) => {
+      if (!cancelled) {
+        console.log('[GhostGuitar] Demo song loaded:', demoSong.title);
+        loadSong(demoSong);
+        setDemoLoaded(true);
       }
-    },
-    [loadSong]
-  );
+    });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSpotifyAuth]);
 
   return (
     <ErrorBoundary label="GhostGuitar App">
@@ -81,31 +144,49 @@ function App() {
                 </p>
               </div>
             </div>
-            <div className="text-xs text-gray-600">v0.2.0</div>
+            <div className="flex items-center gap-4">
+              <SpotifyLoginButton />
+              <div className="text-xs text-gray-600">v0.3.0</div>
+            </div>
           </div>
         </header>
 
         {/* Main content */}
         <main className="mx-auto max-w-5xl px-6 py-8">
           <div className="space-y-6">
-            {/* File upload */}
-            <section>
-              <h2 className="mb-3 text-sm font-medium text-gray-500">
-                Load a Song
-              </h2>
-              <ErrorBoundary label="File Upload">
-                <FileUpload
-                  onFileSelected={handleFileSelected}
-                  progress={progress}
-                  isTranscribing={isTranscribing}
-                />
-              </ErrorBoundary>
-              {error && (
-                <div className="mt-2 rounded-md bg-red-900/30 px-3 py-2 text-sm text-red-400">
-                  {error}
-                </div>
-              )}
-            </section>
+            {/* Spotify Error */}
+            {spotifyError && (
+              <div className="spotify-error">
+                <span>⚠ {spotifyError}</span>
+                <button
+                  className="spotify-error-dismiss"
+                  onClick={() => setSpotifyError(null)}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+
+            {/* Spotify Search (when authenticated) */}
+            {isSpotifyAuth && (
+              <section>
+                <h2 className="mb-3 text-sm font-medium text-gray-500">
+                  Search Spotify
+                </h2>
+                <ErrorBoundary label="Spotify Search">
+                  <SpotifySearch />
+                </ErrorBoundary>
+              </section>
+            )}
+
+            {/* Now Playing (when a track is selected) */}
+            {isSpotifyAuth && currentTrack && (
+              <section>
+                <ErrorBoundary label="Now Playing">
+                  <SpotifyNowPlaying />
+                </ErrorBoundary>
+              </section>
+            )}
 
             {/* Fretboard visualization */}
             {song && (
@@ -117,12 +198,14 @@ function App() {
                   <GhostFretboard />
                 </section>
 
-                {/* Playback controls */}
-                <section>
-                  <ErrorBoundary label="Playback Controls">
-                    <PlaybackControls />
-                  </ErrorBoundary>
-                </section>
+                {/* Playback controls (only for demo/local audio, not Spotify) */}
+                {!currentTrack && (
+                  <section>
+                    <ErrorBoundary label="Playback Controls">
+                      <PlaybackControls />
+                    </ErrorBoundary>
+                  </section>
+                )}
 
                 {/* Info panel */}
                 <section className="grid grid-cols-4 gap-4">
@@ -135,6 +218,16 @@ function App() {
                   <InfoCard label="Engine" value={song.metadata.transcriptionEngine} />
                 </section>
               </>
+            )}
+
+            {/* Login prompt when not authenticated */}
+            {!isSpotifyAuth && !song && (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <p className="text-gray-400 mb-6">
+                  Connect your Spotify account to search and play any song
+                </p>
+                <SpotifyLoginButton />
+              </div>
             )}
           </div>
         </main>
