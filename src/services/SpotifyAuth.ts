@@ -5,7 +5,8 @@
  * No client secret needed — uses code verifier/challenge instead.
  */
 
-const SPOTIFY_CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID ?? '';
+// Client ID is public (PKCE flow — no secret). Env var takes priority for local dev.
+const SPOTIFY_CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID || '0c9e644ff9434ac1b93374f6cf2173d5';
 const SPOTIFY_AUTH_ENDPOINT = 'https://accounts.spotify.com/authorize';
 const SPOTIFY_TOKEN_ENDPOINT = 'https://accounts.spotify.com/api/token';
 
