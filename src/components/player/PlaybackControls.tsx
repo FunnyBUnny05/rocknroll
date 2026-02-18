@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { useGhostStore } from '../../store/useGhostStore';
 import { audioEngine } from '../../engine/audioEngine';
 
@@ -27,18 +27,22 @@ export function PlaybackControls() {
   const playStartOffset = useRef<number>(0);
 
   // High-precision animation loop driven by Web Audio clock
-  const animate = useCallback(() => {
-    const elapsed = audioEngine.contextTime - playStartWebAudioTime.current;
-    const newTime = playStartOffset.current + elapsed * playbackRate;
+  const animateRef = useRef<() => void>(() => { });
 
-    if (song && newTime >= song.duration) {
-      audioEngine.stop();
-      stop();
-      return;
-    }
+  useEffect(() => {
+    animateRef.current = () => {
+      const elapsed = audioEngine.contextTime - playStartWebAudioTime.current;
+      const newTime = playStartOffset.current + elapsed * playbackRate;
 
-    tick(newTime);
-    animationRef.current = requestAnimationFrame(animate);
+      if (song && newTime >= song.duration) {
+        audioEngine.stop();
+        stop();
+        return;
+      }
+
+      tick(newTime);
+      animationRef.current = requestAnimationFrame(animateRef.current);
+    };
   }, [playbackRate, song, stop, tick]);
 
   // Start/stop audio + animation loop when isPlaying changes
@@ -51,13 +55,13 @@ export function PlaybackControls() {
         audioEngine.play(currentTime, playbackRate);
       }
 
-      animationRef.current = requestAnimationFrame(animate);
+      animationRef.current = requestAnimationFrame(animateRef.current);
     } else {
       cancelAnimationFrame(animationRef.current);
       audioEngine.pause();
     }
     return () => cancelAnimationFrame(animationRef.current);
-  }, [isPlaying, animate, song, currentTime, playbackRate]);
+  }, [isPlaying, song, currentTime, playbackRate, stop, tick]);
 
   // Sync playback rate changes to audio engine
   useEffect(() => {
@@ -138,21 +142,19 @@ export function PlaybackControls() {
         <div className="flex gap-1 rounded-lg bg-gray-800/50 p-1">
           <button
             onClick={() => setMode('beginner')}
-            className={`rounded-md px-3 py-1 text-xs font-medium transition ${
-              mode === 'beginner'
-                ? 'bg-emerald-600 text-white'
-                : 'text-gray-400 hover:text-white'
-            }`}
+            className={`rounded-md px-3 py-1 text-xs font-medium transition ${mode === 'beginner'
+              ? 'bg-emerald-600 text-white'
+              : 'text-gray-400 hover:text-white'
+              }`}
           >
             Beginner
           </button>
           <button
             onClick={() => setMode('professional')}
-            className={`rounded-md px-3 py-1 text-xs font-medium transition ${
-              mode === 'professional'
-                ? 'bg-orange-600 text-white'
-                : 'text-gray-400 hover:text-white'
-            }`}
+            className={`rounded-md px-3 py-1 text-xs font-medium transition ${mode === 'professional'
+              ? 'bg-orange-600 text-white'
+              : 'text-gray-400 hover:text-white'
+              }`}
           >
             Pro
           </button>

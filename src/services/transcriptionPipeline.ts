@@ -57,8 +57,7 @@ const STANDARD_TUNING_MIDI = [40, 45, 50, 55, 59, 64];
  * Map a MIDI note number to the most ergonomic guitar position.
  */
 export function midiToGuitar(
-  midiNote: number,
-  _preferredPosition = 0
+  midiNote: number
 ): GuitarMapping | null {
   const candidates: GuitarMapping[] = [];
 
@@ -101,8 +100,7 @@ export function generateHandPose(
  * Convert pitch detection results to tab events.
  */
 export function pitchesToEvents(
-  pitchResult: PitchDetectionResult,
-  _chordThreshold = 0.05
+  pitchResult: PitchDetectionResult
 ): SongEvent[] {
   const events: SongEvent[] = [];
 
