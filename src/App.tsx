@@ -1,16 +1,52 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { GhostFretboard } from './components/fretboard/GhostFretboard';
 import { PlaybackControls } from './components/player/PlaybackControls';
+import { FileUpload } from './components/ui/FileUpload';
 import { useGhostStore } from './store/useGhostStore';
 import { transcribeAudio } from './services/transcriptionPipeline';
+import { transcribeWithBasicPitch } from './services/basicPitchTranscriber';
+import type { TranscriptionProgress } from './services/basicPitchTranscriber';
+import { audioEngine } from './engine/audioEngine';
 
 function App() {
   const { song, loadSong } = useGhostStore();
+  const [progress, setProgress] = useState<TranscriptionProgress | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Load demo song on mount
   useEffect(() => {
     transcribeAudio('demo').then(loadSong);
   }, [loadSong]);
+
+  const handleFileSelected = useCallback(
+    async (file: File) => {
+      setIsTranscribing(true);
+      setError(null);
+      setProgress({ percent: 0, stage: 'loading' });
+
+      try {
+        // Run Basic Pitch transcription
+        const transcribedSong = await transcribeWithBasicPitch(file, setProgress);
+
+        // Load the actual audio into the engine
+        await audioEngine.load(file);
+
+        // Update duration from actual audio
+        transcribedSong.duration = audioEngine.duration;
+
+        loadSong(transcribedSong);
+      } catch (err) {
+        console.error('[GhostGuitar] Transcription failed:', err);
+        setError(
+          err instanceof Error ? err.message : 'Transcription failed'
+        );
+      } finally {
+        setIsTranscribing(false);
+      }
+    },
+    [loadSong]
+  );
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-violet-950">
@@ -28,53 +64,58 @@ function App() {
               </p>
             </div>
           </div>
-          <div className="text-xs text-gray-600">v0.1.0</div>
+          <div className="text-xs text-gray-600">v0.2.0</div>
         </div>
       </header>
 
       {/* Main content */}
       <main className="mx-auto max-w-5xl px-6 py-8">
-        {!song ? (
-          <div className="flex h-64 items-center justify-center">
-            <div className="text-center">
-              <div className="mb-2 text-lg text-gray-400">Loading...</div>
-              <div className="text-sm text-gray-600">
-                Initializing transcription engine
+        <div className="space-y-6">
+          {/* File upload */}
+          <section>
+            <h2 className="mb-3 text-sm font-medium text-gray-500">
+              Load a Song
+            </h2>
+            <FileUpload
+              onFileSelected={handleFileSelected}
+              progress={progress}
+              isTranscribing={isTranscribing}
+            />
+            {error && (
+              <div className="mt-2 rounded-md bg-red-900/30 px-3 py-2 text-sm text-red-400">
+                {error}
               </div>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Fretboard visualization */}
-            <section>
-              <h2 className="mb-3 text-sm font-medium text-gray-500">
-                Fretboard Visualization
-              </h2>
-              <GhostFretboard />
-            </section>
+            )}
+          </section>
 
-            {/* Playback controls */}
-            <section>
-              <PlaybackControls />
-            </section>
+          {/* Fretboard visualization */}
+          {song && (
+            <>
+              <section>
+                <h2 className="mb-3 text-sm font-medium text-gray-500">
+                  Fretboard Visualization
+                </h2>
+                <GhostFretboard />
+              </section>
 
-            {/* Info panel */}
-            <section className="grid grid-cols-3 gap-4">
-              <InfoCard
-                label="Tuning"
-                value={song.tuning.join(' ')}
-              />
-              <InfoCard
-                label="BPM"
-                value={String(song.bpm)}
-              />
-              <InfoCard
-                label="Confidence"
-                value={`${(song.metadata.confidence * 100).toFixed(0)}%`}
-              />
-            </section>
-          </div>
-        )}
+              {/* Playback controls */}
+              <section>
+                <PlaybackControls />
+              </section>
+
+              {/* Info panel */}
+              <section className="grid grid-cols-4 gap-4">
+                <InfoCard label="Tuning" value={song.tuning.join(' ')} />
+                <InfoCard label="BPM" value={String(song.bpm)} />
+                <InfoCard
+                  label="Confidence"
+                  value={`${(song.metadata.confidence * 100).toFixed(0)}%`}
+                />
+                <InfoCard label="Engine" value={song.metadata.transcriptionEngine} />
+              </section>
+            </>
+          )}
+        </div>
       </main>
     </div>
   );
@@ -84,7 +125,7 @@ function InfoCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3 text-center">
       <div className="text-xs text-gray-500">{label}</div>
-      <div className="mt-1 text-sm font-medium text-white">{value}</div>
+      <div className="mt-1 truncate text-sm font-medium text-white">{value}</div>
     </div>
   );
 }

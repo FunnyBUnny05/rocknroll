@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useGhostStore } from '../../store/useGhostStore';
+import { audioEngine } from '../../engine/audioEngine';
 
 /**
  * PlaybackControls - Transport bar for song playback.
- * Handles play/pause, seek, tempo, and mode switching.
+ * Syncs with the Tone.js audio engine for sample-accurate timing.
  */
 export function PlaybackControls() {
   const {
@@ -22,37 +23,63 @@ export function PlaybackControls() {
   } = useGhostStore();
 
   const animationRef = useRef<number>(0);
-  const startTimeRef = useRef<number>(0);
-  const offsetRef = useRef<number>(0);
+  const playStartWebAudioTime = useRef<number>(0);
+  const playStartOffset = useRef<number>(0);
 
-  // Animation loop for playback sync
-  const animate = useCallback(
-    (timestamp: number) => {
-      if (!startTimeRef.current) startTimeRef.current = timestamp;
-      const elapsed = (timestamp - startTimeRef.current) / 1000;
-      const newTime = offsetRef.current + elapsed * playbackRate;
+  // High-precision animation loop driven by Web Audio clock
+  const animate = useCallback(() => {
+    const elapsed = audioEngine.contextTime - playStartWebAudioTime.current;
+    const newTime = playStartOffset.current + elapsed * playbackRate;
 
-      if (song && newTime >= song.duration) {
-        stop();
-        return;
+    if (song && newTime >= song.duration) {
+      audioEngine.stop();
+      stop();
+      return;
+    }
+
+    tick(newTime);
+    animationRef.current = requestAnimationFrame(animate);
+  }, [playbackRate, song, stop, tick]);
+
+  // Start/stop audio + animation loop when isPlaying changes
+  useEffect(() => {
+    if (isPlaying && song) {
+      playStartWebAudioTime.current = audioEngine.contextTime;
+      playStartOffset.current = currentTime;
+
+      if (audioEngine.isLoaded) {
+        audioEngine.play(currentTime, playbackRate);
       }
 
-      tick(newTime);
-      animationRef.current = requestAnimationFrame(animate);
-    },
-    [playbackRate, song, stop, tick]
-  );
-
-  useEffect(() => {
-    if (isPlaying) {
-      startTimeRef.current = 0;
-      offsetRef.current = currentTime;
       animationRef.current = requestAnimationFrame(animate);
     } else {
       cancelAnimationFrame(animationRef.current);
+      audioEngine.pause();
     }
     return () => cancelAnimationFrame(animationRef.current);
-  }, [isPlaying, animate, currentTime]);
+  }, [isPlaying, animate, song, currentTime, playbackRate]);
+
+  // Sync playback rate changes to audio engine
+  useEffect(() => {
+    audioEngine.setRate(playbackRate);
+  }, [playbackRate]);
+
+  const handleSeek = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!song) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const pct = (e.clientX - rect.left) / rect.width;
+      const time = pct * song.duration;
+      seek(time);
+
+      if (isPlaying) {
+        audioEngine.play(time, playbackRate);
+        playStartWebAudioTime.current = audioEngine.contextTime;
+        playStartOffset.current = time;
+      }
+    },
+    [song, seek, isPlaying, playbackRate]
+  );
 
   if (!song) return null;
 
@@ -69,15 +96,16 @@ export function PlaybackControls() {
       {/* Progress bar */}
       <div
         className="relative mb-4 h-2 cursor-pointer rounded-full bg-gray-800"
-        onClick={(e) => {
-          const rect = e.currentTarget.getBoundingClientRect();
-          const pct = (e.clientX - rect.left) / rect.width;
-          seek(pct * song.duration);
-        }}
+        onClick={handleSeek}
       >
         <div
           className="h-full rounded-full bg-gradient-to-r from-violet-600 to-purple-500 transition-all duration-75"
           style={{ width: `${progress}%` }}
+        />
+        {/* Playhead dot */}
+        <div
+          className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-white shadow-md shadow-violet-500/40 transition-all duration-75"
+          style={{ left: `calc(${progress}% - 6px)` }}
         />
       </div>
 
