@@ -4,14 +4,11 @@
  * Uses Spotify's Basic Pitch (TensorFlow.js-based) for in-browser
  * audio-to-MIDI transcription. Converts detected notes into GhostGuitar
  * SongEvents with hand-pose data.
+ *
+ * The @spotify/basic-pitch + TensorFlow.js dependency is loaded lazily
+ * via dynamic import() so it doesn't block initial page load.
  */
 
-import {
-  BasicPitch,
-  outputToNotesPoly,
-  noteFramesToTime,
-  addPitchBendsToNoteEvents,
-} from '@spotify/basic-pitch';
 import type { NoteEventTime } from '@spotify/basic-pitch';
 import type { Song, SongEvent, FingerPlacement, TabNote } from '../types/song';
 import { midiToGuitar, generateHandPose } from './transcriptionPipeline';
@@ -178,11 +175,24 @@ function estimateBPM(events: SongEvent[]): number {
 /**
  * Full transcription using Basic Pitch.
  * Takes an audio File, runs in-browser pitch detection, returns a Song.
+ *
+ * TensorFlow.js and Basic Pitch are loaded lazily via dynamic import
+ * so they don't block the initial page render.
  */
 export async function transcribeWithBasicPitch(
   file: File,
   onProgress?: (progress: TranscriptionProgress) => void
 ): Promise<Song> {
+  onProgress?.({ percent: 2, stage: 'loading' });
+
+  // Lazy-load Basic Pitch + TF.js (heavy deps, ~2MB)
+  const {
+    BasicPitch,
+    outputToNotesPoly,
+    noteFramesToTime,
+    addPitchBendsToNoteEvents,
+  } = await import('@spotify/basic-pitch');
+
   onProgress?.({ percent: 5, stage: 'loading' });
 
   // Decode audio to mono Float32Array at 22050 Hz
@@ -205,12 +215,12 @@ export async function transcribeWithBasicPitch(
 
   await basicPitch.evaluateModel(
     monoData,
-    (frames, onsets, contours) => {
+    (frames: number[][], onsets: number[][], contours: number[][]) => {
       allFrames.push(...frames);
       allOnsets.push(...onsets);
       allContours.push(...contours);
     },
-    (percent) => {
+    (percent: number) => {
       onProgress?.({
         percent: 20 + percent * 50,
         stage: 'detecting',

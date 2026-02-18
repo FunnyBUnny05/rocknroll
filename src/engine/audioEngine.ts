@@ -4,9 +4,10 @@
  * Provides sample-accurate timing by reading from the Web Audio clock
  * instead of relying on requestAnimationFrame timestamps. The engine
  * exposes a singleton that the PlaybackControls and store sync against.
+ *
+ * Tone.js is loaded lazily to avoid crashing the page on import
+ * (it probes AudioContext at module scope in some builds).
  */
-
-import * as Tone from 'tone';
 
 export interface AudioEngineState {
   isLoaded: boolean;
@@ -14,18 +15,30 @@ export interface AudioEngineState {
   isPlaying: boolean;
 }
 
+// Lazy-loaded Tone module reference
+let Tone: typeof import('tone') | null = null;
+
+async function getTone() {
+  if (!Tone) {
+    Tone = await import('tone');
+  }
+  return Tone;
+}
+
 class AudioEngine {
-  private player: Tone.Player | null = null;
+  private player: import('tone').Player | null = null;
   private _duration = 0;
   private _isLoaded = false;
   private _objectUrl: string | null = null;
+  /** Fallback clock using performance.now() when Tone isn't loaded yet */
+  private _fallbackClockStart = performance.now() / 1000;
 
   /** Load an audio file from a URL or File/Blob */
   async load(source: string | File): Promise<number> {
-    // Dispose previous player
     this.dispose();
 
-    await Tone.start();
+    const T = await getTone();
+    await T.start();
 
     let url: string;
     if (source instanceof File) {
@@ -35,15 +48,14 @@ class AudioEngine {
       url = source;
     }
 
-    this.player = new Tone.Player({
+    this.player = new T.Player({
       url,
       onload: () => {
         this._isLoaded = true;
       },
     }).toDestination();
 
-    // Wait for the buffer to load
-    await Tone.loaded();
+    await T.loaded();
 
     this._duration = this.player.buffer.duration;
     this._isLoaded = true;
@@ -52,7 +64,7 @@ class AudioEngine {
 
   /** Start playback from the given offset (seconds) at the given rate */
   play(offset = 0, rate = 1): void {
-    if (!this.player || !this._isLoaded) return;
+    if (!this.player || !this._isLoaded || !Tone) return;
 
     this.player.playbackRate = rate;
 
@@ -85,10 +97,11 @@ class AudioEngine {
 
   /**
    * Get current transport time from Web Audio context.
-   * This is the high-precision clock source that drives Ghost Hand sync.
+   * Falls back to performance.now() if Tone isn't loaded yet.
    */
   get contextTime(): number {
-    return Tone.now();
+    if (Tone) return Tone.now();
+    return performance.now() / 1000 - this._fallbackClockStart;
   }
 
   get duration(): number {
@@ -100,7 +113,7 @@ class AudioEngine {
   }
 
   get isPlaying(): boolean {
-    return this.player?.state === 'started';
+    return this.player?.state === 'started' || false;
   }
 
   /** Clean up resources */
