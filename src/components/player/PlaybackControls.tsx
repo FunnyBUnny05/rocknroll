@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useGhostStore } from '../../store/useGhostStore';
 import { audioEngine } from '../../engine/audioEngine';
 
