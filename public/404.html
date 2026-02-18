@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>GhostGuitar - Redirecting...</title>
+    <!--
+      GitHub Pages SPA redirect workaround.
+      When GitHub Pages can't find a file (e.g. /rocknroll/callback),
+      it serves this 404.html instead. This script preserves the full
+      URL (path + query string) and redirects to index.html using a
+      session-storage trick so the SPA can handle the route.
+      
+      Based on: https://github.com/rafgraph/spa-github-pages
+    -->
+    <script>
+      // Store the original path & query in sessionStorage,
+      // then redirect to the root so index.html loads.
+      (function () {
+        var segmentCount = 1; // Number of path segments to keep (repo name = 1)
+        var loc = window.location;
+        var fullPath = loc.pathname + loc.search + loc.hash;
+        // Save for the SPA to pick up
+        sessionStorage.setItem('spa-redirect', fullPath);
+        // Redirect to base keeping the repo segment
+        var basePath = loc.pathname
+          .split('/')
+          .slice(0, segmentCount + 1)
+          .join('/');
+        loc.replace(basePath + '/');
+      })();
+    </script>
+  </head>
+  <body>
+    <p>Redirecting&hellip;</p>
+  </body>
+</html>

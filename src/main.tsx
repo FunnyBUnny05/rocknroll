@@ -15,6 +15,15 @@ if (!rootEl) {
   throw new Error('#root element not found');
 }
 
+// --- GitHub Pages SPA redirect restoration ---
+// When 404.html redirects, it stores the original URL in sessionStorage.
+// Restore it here so routing sees the correct path.
+const spaRedirect = sessionStorage.getItem('spa-redirect');
+if (spaRedirect) {
+  sessionStorage.removeItem('spa-redirect');
+  window.history.replaceState(null, '', spaRedirect);
+}
+
 // Simple path-based routing for OAuth callback
 const basePath = import.meta.env.BASE_URL || '/';
 const pathname = window.location.pathname;
