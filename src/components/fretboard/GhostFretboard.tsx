@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import { Fretboard3D } from './Fretboard3D';
@@ -7,17 +7,34 @@ import { useGhostStore } from '../../store/useGhostStore';
 import type { ViewMode } from '../../store/useGhostStore';
 import { ChordOverlay } from '../ui/ChordOverlay';
 import { TabOverlay } from '../ui/TabOverlay';
+import { ErrorBoundary } from '../ui/ErrorBoundary';
+
+/** Logs lifecycle from inside the R3F Canvas */
+function SceneLogger() {
+  useEffect(() => {
+    console.log('[GhostGuitar] 3D scene mounted - WebGL context active');
+    return () => {
+      console.log('[GhostGuitar] 3D scene unmounted');
+    };
+  }, []);
+  return null;
+}
 
 /**
  * GhostFretboard - Main visualization component.
  *
  * Combines the 3D fretboard, Ghost Hand, and either Chord or Tab overlay
- * based on the current view mode. Toggleable between modes.
+ * based on the current view mode. Wrapped in ErrorBoundary so a WebGL
+ * failure doesn't kill the entire app.
  */
 export function GhostFretboard() {
   const viewMode = useGhostStore((s) => s.viewMode);
   const setViewMode = useGhostStore((s) => s.setViewMode);
   const activeEvent = useGhostStore((s) => s.activeEvent);
+
+  useEffect(() => {
+    console.log('[GhostGuitar] GhostFretboard mounted');
+  }, []);
 
   return (
     <div className="relative w-full">
@@ -37,33 +54,39 @@ export function GhostFretboard() {
         />
       </div>
 
-      {/* 3D Canvas */}
-      <div className="h-[400px] w-full rounded-xl border border-gray-800 bg-gradient-to-b from-gray-900 to-black">
-        <Canvas
-          camera={{ position: [5, 0, 4], fov: 50 }}
-          gl={{ antialias: true, alpha: true }}
-        >
-          <ambientLight intensity={0.4} />
-          <directionalLight position={[5, 5, 5]} intensity={0.8} />
-          <pointLight
-            position={[3, 0, 2]}
-            intensity={0.6}
-            color="#8b5cf6"
-          />
+      {/* 3D Canvas - wrapped in ErrorBoundary for WebGL failures */}
+      <ErrorBoundary label="3D Fretboard">
+        <div className="h-[400px] w-full rounded-xl border border-gray-800 bg-gradient-to-b from-gray-900 to-black">
+          <Canvas
+            camera={{ position: [5, 0, 4], fov: 50 }}
+            gl={{ antialias: true, alpha: true }}
+            onCreated={() => {
+              console.log('[GhostGuitar] Canvas WebGL context created');
+            }}
+          >
+            <SceneLogger />
+            <ambientLight intensity={0.4} />
+            <directionalLight position={[5, 5, 5]} intensity={0.8} />
+            <pointLight
+              position={[3, 0, 2]}
+              intensity={0.6}
+              color="#8b5cf6"
+            />
 
-          <Suspense fallback={null}>
-            <Fretboard3D />
-            <GhostHand />
-          </Suspense>
+            <Suspense fallback={null}>
+              <Fretboard3D />
+              <GhostHand />
+            </Suspense>
 
-          <OrbitControls
-            enablePan={false}
-            minDistance={3}
-            maxDistance={12}
-            target={[4, 0, 0]}
-          />
-        </Canvas>
-      </div>
+            <OrbitControls
+              enablePan={false}
+              minDistance={3}
+              maxDistance={12}
+              target={[4, 0, 0]}
+            />
+          </Canvas>
+        </div>
+      </ErrorBoundary>
 
       {/* Overlay - switches based on mode */}
       <div className="mt-4">

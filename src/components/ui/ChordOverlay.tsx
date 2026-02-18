@@ -39,7 +39,7 @@ export function ChordOverlay({ chord }: { chord: ChordShape }) {
 
           {/* Fret rows */}
           {fretRange.map((fret) => (
-            <>
+            <div key={`row-${fret}`} className="contents">
               {strings.map((s) => {
                 const placement = chord.placements.find(
                   (p) => p.string === s && p.fret === fret
@@ -57,13 +57,10 @@ export function ChordOverlay({ chord }: { chord: ChordShape }) {
                   </div>
                 );
               })}
-              <div
-                key={`fret-label-${fret}`}
-                className="flex h-8 items-center pl-2 text-xs text-gray-600"
-              >
+              <div className="flex h-8 items-center pl-2 text-xs text-gray-600">
                 {fret}
               </div>
-            </>
+            </div>
           ))}
         </div>
       </div>
