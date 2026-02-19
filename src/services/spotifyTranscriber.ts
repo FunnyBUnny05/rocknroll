@@ -313,8 +313,6 @@ export async function transcribeSpotifyTrack(
             getAudioFeatures(trackId),
         ]);
 
-        let hasDeepseekRun = false;
-
         if (analysis.status === 'fulfilled' && analysis.value.segments.length > 0) {
             const data = analysis.value;
             // Get base data
@@ -363,13 +361,11 @@ export async function transcribeSpotifyTrack(
                     chordEvents = resultEvents.filter((e) => e.type === 'chord');
                     // Ensure all tab notes are mapped back into chord format if they exist
                 }
-                hasDeepseekRun = true;
             } else {
                 // Legacy analysis logic
                 chordEvents = analysisToChordEvents(data);
                 tabEvents = analysisToTabEvents(data);
                 engine = 'spotify-audio-analysis';
-                confidence = 0.8;
             }
         } else if (deepseekApiKey) {
             // Mock summary to trigger DeepSeek anyway if Spotify 403s
@@ -404,7 +400,6 @@ export async function transcribeSpotifyTrack(
                 tabEvents = resultEvents;
                 chordEvents = resultEvents.filter((e) => e.type === 'chord');
             }
-            hasDeepseekRun = true;
             engine = 'deepseek-' + level + '-fallback';
             confidence = 0.7;
         } else {

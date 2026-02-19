@@ -13,7 +13,7 @@ interface SettingsState {
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
-      deepseekApiKey: 'sk-bda482370d494bb4aa62eeab480f2129',
+      deepseekApiKey: 'sk-5c7272ba139742d783896d6765be8f34',
       level: 'Normal',
       isSettingsOpen: false,
       setDeepseekApiKey: (key) => set({ deepseekApiKey: key }),

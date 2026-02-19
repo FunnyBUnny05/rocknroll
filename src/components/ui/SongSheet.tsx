@@ -27,20 +27,22 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-/** Group events into bars (clusters of ~4 beats / adjacent events) */
+/** Group events into bars (clusters of ~4 beats/seconds) */
 function groupIntoBars(events: SongEvent[], beatsPerBar = 4): SongEvent[][] {
   if (events.length === 0) return [];
   const bars: SongEvent[][] = [];
   let currentBar: SongEvent[] = [];
-  let barStart = events[0].time;
-  const avgDuration = events.reduce((s, e) => s + e.duration, 0) / events.length;
-  const barDuration = avgDuration * beatsPerBar;
+  let barStartTime = events[0].time;
+
+  // A standard bar in 120bpm is 2 seconds (0.5s per beat * 4)
+  // Our time is in seconds.
+  const secondsPerBar = (60 / 120) * beatsPerBar;
 
   for (const event of events) {
-    if (event.time - barStart >= barDuration && currentBar.length > 0) {
+    if (event.time - barStartTime >= secondsPerBar && currentBar.length > 0) {
       bars.push(currentBar);
       currentBar = [];
-      barStart = event.time;
+      barStartTime = event.time;
     }
     currentBar.push(event);
   }
@@ -112,22 +114,34 @@ function TabBar({ events, isActive, barIndex }: { events: SongEvent[]; isActive:
 
   for (const event of events) {
     const notes = event.notes ?? event.chord?.placements.map(p => ({ string: p.string, fret: p.fret })) ?? [];
-    const fretsByString = new Map<number, number>();
+
+    // Create a new column for this event
+    const columnFrets = new Map<number, number>();
     for (const n of notes) {
-      fretsByString.set(n.string, n.fret);
+      columnFrets.set(n.string, n.fret);
     }
+
+    // Push the fret (or empty dash) to each string for this column
     for (let s = 1; s <= 6; s++) {
-      if (fretsByString.has(s)) {
-        const fret = fretsByString.get(s)!;
+      if (columnFrets.has(s)) {
+        const fret = columnFrets.get(s)!;
         strings[s - 1].push(fret < 10 ? `${fret}` : `${fret}`);
       } else {
         strings[s - 1].push('-');
       }
     }
+
+    // Optionally add a spacing column after each event to spread them out visually
+    // unless it's the very last event in the bar
+    if (event !== events[events.length - 1]) {
+      for (let s = 1; s <= 6; s++) {
+        strings[s - 1].push('-');
+      }
+    }
   }
 
-  // Pad to at least 4 columns
-  const minCols = 4;
+  // Pad to at least 8 columns minimum so it looks like a real tab bar
+  const minCols = 8;
   for (const row of strings) {
     while (row.length < minCols) row.push('-');
   }
@@ -135,8 +149,8 @@ function TabBar({ events, isActive, barIndex }: { events: SongEvent[]; isActive:
   return (
     <div
       className={`rounded-md border px-3 py-2 font-mono text-xs ${isActive
-          ? 'border-green-600 bg-green-900/20'
-          : 'border-gray-800 bg-gray-950/50'
+        ? 'border-green-600 bg-green-900/20'
+        : 'border-gray-800 bg-gray-950/50'
         }`}
     >
       <div className="flex items-start gap-0.5 text-[10px] text-gray-500 mb-0.5">
@@ -153,8 +167,8 @@ function TabBar({ events, isActive, barIndex }: { events: SongEvent[]; isActive:
             <span
               key={col}
               className={`w-4 text-center ${fret !== '-'
-                  ? isActive ? 'text-green-300 font-bold' : 'text-gray-300'
-                  : 'text-gray-700'
+                ? isActive ? 'text-green-300 font-bold' : 'text-gray-300'
+                : 'text-gray-700'
                 }`}
             >
               {fret}
