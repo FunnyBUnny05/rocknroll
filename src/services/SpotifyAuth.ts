@@ -72,9 +72,26 @@ export async function redirectToSpotifyLogin(): Promise<void> {
 }
 
 export async function handleCallback(): Promise<boolean> {
+    // Check both query string and hash fragment for auth data
     const params = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+
     const code = params.get('code');
-    const error = params.get('error');
+    const error = params.get('error') || hashParams.get('error');
+
+    // Handle implicit-flow token in hash (fallback)
+    const hashToken = hashParams.get('access_token');
+    if (hashToken) {
+        const expiresIn = parseInt(hashParams.get('expires_in') || '3600');
+        storeTokens({
+            access_token: hashToken,
+            refresh_token: '',
+            expires_in: expiresIn,
+            token_type: 'Bearer',
+        });
+        window.history.replaceState({}, '', window.location.pathname);
+        return true;
+    }
 
     if (error) {
         console.error('Spotify auth error:', error);
@@ -85,7 +102,7 @@ export async function handleCallback(): Promise<boolean> {
 
     const codeVerifier = sessionStorage.getItem('spotify_code_verifier');
     if (!codeVerifier) {
-        console.error('Missing code verifier');
+        console.error('Missing code verifier — was sessionStorage cleared?');
         return false;
     }
 
@@ -103,7 +120,8 @@ export async function handleCallback(): Promise<boolean> {
         });
 
         if (!response.ok) {
-            console.error('Token exchange failed:', response.status);
+            const errorBody = await response.text().catch(() => '');
+            console.error('Token exchange failed:', response.status, errorBody);
             return false;
         }
 
@@ -186,7 +204,11 @@ export async function getValidToken(): Promise<string | null> {
 }
 
 export function isAuthenticated(): boolean {
-    return !!getAccessToken() && !isTokenExpired();
+    // Consider authenticated if we have any token (access or refresh).
+    // Expired access tokens will be refreshed transparently by getValidToken().
+    const hasAccess = !!getAccessToken();
+    const hasRefresh = !!sessionStorage.getItem('spotify_refresh_token');
+    return hasAccess || hasRefresh;
 }
 
 export function logout(): void {

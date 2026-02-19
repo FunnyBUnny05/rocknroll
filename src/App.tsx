@@ -146,7 +146,7 @@ function App() {
             </div>
             <div className="flex items-center gap-4">
               <SpotifyLoginButton />
-              <div className="text-xs text-gray-600">v0.3.0</div>
+              <div className="text-xs text-gray-600">v0.4.0</div>
             </div>
           </div>
         </header>
@@ -167,11 +167,11 @@ function App() {
               </div>
             )}
 
-            {/* Spotify Search (when authenticated) */}
+            {/* Spotify Search — first thing after login */}
             {isSpotifyAuth && (
               <section>
                 <h2 className="mb-3 text-sm font-medium text-gray-500">
-                  Search Spotify
+                  Search a Song
                 </h2>
                 <ErrorBoundary label="Spotify Search">
                   <SpotifySearch />
@@ -193,7 +193,7 @@ function App() {
               <>
                 <section>
                   <h2 className="mb-3 text-sm font-medium text-gray-500">
-                    Fretboard Visualization
+                    Fretboard
                   </h2>
                   <GhostFretboard />
                 </section>
@@ -208,7 +208,7 @@ function App() {
                 )}
 
                 {/* Info panel */}
-                <section className="grid grid-cols-4 gap-4">
+                <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <InfoCard label="Tuning" value={song.tuning.join(' ')} />
                   <InfoCard label="BPM" value={String(song.bpm)} />
                   <InfoCard
