@@ -371,8 +371,44 @@ export async function transcribeSpotifyTrack(
                 engine = 'spotify-audio-analysis';
                 confidence = 0.8;
             }
-        } else if (!hasDeepseekRun) {
-            throw new Error('Audio analysis unavailable');
+        } else if (deepseekApiKey) {
+            // Mock summary to trigger DeepSeek anyway if Spotify 403s
+            // We tell DeepSeek specifically we want the intro/main riff detailed.
+            const mockSummary = {
+                instructions: "Spotify audio analysis was unavailable. Please provide the exact iconic main riff or solo for this song, broken down note-by-note into at least 16 separate tab events.",
+                totalSegments: Math.floor(durationMs / 2000), // Guessing 1 segment per 2s
+                duration: durationMs / 1000,
+                bpm,
+                timeSignature,
+                keyEstimates: [0] // C Major default
+            };
+
+            const dsResult = await generateGuitarInstructions(trackName, artistName, mockSummary) as unknown as DeepSeekResult;
+
+            const resultEvents: SongEvent[] = dsResult.events || [];
+            lyricsAligned = dsResult.lyricsAligned;
+
+            if (level === 'Beginner') {
+                chordEvents = resultEvents;
+                tabEvents = chordEvents.map(evt => ({
+                    time: evt.time,
+                    duration: evt.duration,
+                    type: 'tab' as const,
+                    notes: evt.chord?.placements?.map(p => ({
+                        string: p.string as 1 | 2 | 3 | 4 | 5 | 6,
+                        fret: p.fret,
+                        duration: evt.duration,
+                    })) ?? [],
+                }));
+            } else {
+                tabEvents = resultEvents;
+                chordEvents = resultEvents.filter((e) => e.type === 'chord');
+            }
+            hasDeepseekRun = true;
+            engine = 'deepseek-' + level + '-fallback';
+            confidence = 0.7;
+        } else {
+            throw new Error('Audio analysis unavailable and DeepSeek disabled');
         }
     } catch (err) {
         console.warn('Transcription error or fallback:', err);
@@ -393,7 +429,7 @@ export async function transcribeSpotifyTrack(
     }
 
     return {
-        id: `spotify-${trackId}`,
+        id: `spotify- ${trackId}`,
         title: trackName,
         artist: artistName,
         duration: durationMs / 1000,

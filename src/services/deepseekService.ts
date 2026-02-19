@@ -40,28 +40,45 @@ Output valid JSON matching this schema exactly:
   ]
 }`;
 
-  const normalPrompt = `You are a professional session guitarist. Provide an accurate transcription. Include exact voicings (7ths, 9ths, sus4), barre chords, and specific lead guitar tabs. Detect the artist's actual tuning.
+  const normalPrompt = `You are a professional session guitarist transcribing a song note-for-note. Provide an extremely accurate transcription.
+CRITICAL INSTRUCTIONS FOR TABS:
+1. DO NOT output block chords when playing a riff, melody, or solo.
+2. Output individual, sequential notes representing the lead guitar melody.
+3. Each distinct note MUST be its own separate event with type: "tab".
+4. Space the notes out accurately using the "time" property (e.g., 0.0, 0.5, 1.0) so they render sequentially in tablature.
+5. Provide dozens of events representing the actual strumming/picking pattern, not just one per measure.
+
 Output valid JSON matching this schema exactly:
 {
   "tuning": "STANDARD (or detected)",
   "events": [
     {
       "time": 0.0,
-      "duration": 4.0,
+      "duration": 0.25,
       "type": "tab",
-      "notes": [
-        { "string": 6, "fret": 3, "duration": 1.0 }
-      ]
+      "notes": [ { "string": 6, "fret": 0, "duration": 0.25 } ]
+    },
+    {
+      "time": 0.25,
+      "duration": 0.25,
+      "type": "tab",
+      "notes": [ { "string": 5, "fret": 2, "duration": 0.25 } ]
+    },
+    {
+      "time": 0.5,
+      "duration": 0.5,
+      "type": "tab",
+      "notes": [ { "string": 4, "fret": 2, "duration": 0.5 } ]
     },
     {
       "time": 4.0,
       "duration": 4.0,
       "type": "chord",
       "chord": {
-        "name": "C Major 7",
-        "symbol": "Cmaj7",
-        "placements": [{ "string": 5, "fret": 3, "finger": 1 }],
-        "mutedStrings": [6]
+        "name": "E Minor",
+        "symbol": "Em",
+        "placements": [{ "string": 5, "fret": 2, "finger": 1 }, { "string": 4, "fret": 2, "finger": 2 }],
+        "mutedStrings": []
       }
     }
   ],
