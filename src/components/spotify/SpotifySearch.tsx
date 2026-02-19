@@ -2,10 +2,10 @@
  * SpotifySearch - Search bar with results list
  *
  * Debounced search (300ms), shows album art, track name, artist, duration.
- * Click to select and start playback.
+ * Click to select and start playback. Results stay visible while interacting.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { searchTracks, formatDuration, playTrack } from '../../services/SpotifyService';
 import { useSpotifyStore } from '../../store/useSpotifyStore';
 import type { SpotifyTrack } from '../../services/SpotifyService';
@@ -24,13 +24,15 @@ export function SpotifySearch() {
         setError,
     } = useSpotifyStore();
 
-    const [isFocused, setIsFocused] = useState(false);
+    const [showResults, setShowResults] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
     const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Debounced search
     useEffect(() => {
         if (!searchQuery.trim()) {
             setSearchResults([]);
+            setShowResults(false);
             return;
         }
 
@@ -41,9 +43,10 @@ export function SpotifySearch() {
             try {
                 const results = await searchTracks(searchQuery, 8);
                 setSearchResults(results);
+                setShowResults(results.length > 0);
             } catch (err) {
                 console.error('Search failed:', err);
-                setError('Search failed — try again');
+                setError('Search failed — check your connection and try again');
             } finally {
                 setSearching(false);
             }
@@ -54,11 +57,22 @@ export function SpotifySearch() {
         };
     }, [searchQuery, setSearchResults, setSearching, setError]);
 
-    const handleSelect = async (track: SpotifyTrack) => {
+    // Close results when clicking outside
+    useEffect(() => {
+        function handleClickOutside(e: MouseEvent) {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+                setShowResults(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const handleSelect = useCallback(async (track: SpotifyTrack) => {
         setCurrentTrack(track);
         setSearchQuery('');
         setSearchResults([]);
-        setIsFocused(false);
+        setShowResults(false);
 
         if (deviceId) {
             try {
@@ -67,13 +81,13 @@ export function SpotifySearch() {
                 console.error('Playback failed:', err);
                 setError('Playback failed — is Spotify Premium active?');
             }
+        } else {
+            setError('Waiting for Spotify player to connect. Try again in a moment.');
         }
-    };
-
-    const showResults = isFocused && searchResults.length > 0;
+    }, [deviceId, setCurrentTrack, setSearchQuery, setSearchResults, setError]);
 
     return (
-        <div className="spotify-search-container">
+        <div ref={containerRef} className="spotify-search-container">
             <div className="spotify-search-input-wrapper">
                 <svg className="spotify-search-icon" viewBox="0 0 24 24" width="18" height="18">
                     <path
@@ -87,22 +101,23 @@ export function SpotifySearch() {
                     placeholder="Search for a song on Spotify..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    onFocus={() => setIsFocused(true)}
-                    onBlur={() => {
-                        // Delay to allow click on results
-                        setTimeout(() => setIsFocused(false), 200);
+                    onFocus={() => {
+                        if (searchResults.length > 0) setShowResults(true);
                     }}
                 />
                 {isSearching && <div className="spotify-search-spinner" />}
             </div>
 
-            {showResults && (
+            {showResults && searchResults.length > 0 && (
                 <ul className="spotify-search-results">
                     {searchResults.map((track) => (
                         <li
                             key={track.id}
                             className="spotify-search-result-item"
-                            onClick={() => handleSelect(track)}
+                            onMouseDown={(e) => {
+                                e.preventDefault(); // Prevent blur before click registers
+                                handleSelect(track);
+                            }}
                         >
                             <img
                                 src={track.album.images[2]?.url ?? track.album.images[0]?.url ?? ''}
