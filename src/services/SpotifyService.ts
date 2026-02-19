@@ -156,9 +156,77 @@ export async function seekToPosition(positionMs: number): Promise<void> {
     });
 }
 
+/** Get audio analysis for a track (segments, beats, bars, sections) */
+export async function getAudioAnalysis(trackId: string): Promise<SpotifyAudioAnalysis> {
+    return spotifyFetch<SpotifyAudioAnalysis>(`/audio-analysis/${trackId}`);
+}
+
+/** Get audio features for a track (key, mode, tempo, etc.) */
+export async function getAudioFeatures(trackId: string): Promise<SpotifyAudioFeatures> {
+    return spotifyFetch<SpotifyAudioFeatures>(`/audio-features/${trackId}`);
+}
+
 /** Format milliseconds to mm:ss */
 export function formatDuration(ms: number): string {
     const minutes = Math.floor(ms / 60000);
     const seconds = Math.floor((ms % 60000) / 1000);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+}
+
+// --- Audio Analysis Types ---
+
+export interface SpotifyAudioAnalysis {
+    bars: SpotifyTimeInterval[];
+    beats: SpotifyTimeInterval[];
+    sections: SpotifySection[];
+    segments: SpotifySegment[];
+    tatums: SpotifyTimeInterval[];
+}
+
+export interface SpotifyTimeInterval {
+    start: number;
+    duration: number;
+    confidence: number;
+}
+
+export interface SpotifySection {
+    start: number;
+    duration: number;
+    confidence: number;
+    loudness: number;
+    tempo: number;
+    tempo_confidence: number;
+    key: number;
+    key_confidence: number;
+    mode: number;
+    mode_confidence: number;
+    time_signature: number;
+    time_signature_confidence: number;
+}
+
+export interface SpotifySegment {
+    start: number;
+    duration: number;
+    confidence: number;
+    loudness_start: number;
+    loudness_max: number;
+    loudness_max_time: number;
+    loudness_end: number;
+    /** 12-element chroma array [C, C#, D, ..., B], each 0.0-1.0 */
+    pitches: number[];
+    /** 12-element timbre array */
+    timbre: number[];
+}
+
+export interface SpotifyAudioFeatures {
+    id: string;
+    key: number;
+    mode: number;
+    tempo: number;
+    time_signature: number;
+    danceability: number;
+    energy: number;
+    valence: number;
+    acousticness: number;
+    instrumentalness: number;
 }

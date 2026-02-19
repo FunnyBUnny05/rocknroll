@@ -1,13 +1,11 @@
-import { useEffect, useState } from 'react';
-import { GhostFretboard } from './components/fretboard/GhostFretboard';
-import { PlaybackControls } from './components/player/PlaybackControls';
+import { useEffect, useRef, useCallback } from 'react';
+import { FretboardPanel } from './components/fretboard/FretboardPanel';
 import { SpotifyLoginButton } from './components/spotify/SpotifyLoginButton';
 import { SpotifySearch } from './components/spotify/SpotifySearch';
 import { SpotifyNowPlaying } from './components/spotify/SpotifyNowPlaying';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
-import { useGhostStore } from './store/useGhostStore';
+import { useAppStore } from './store/useAppStore';
 import { useSpotifyStore } from './store/useSpotifyStore';
-import { transcribeAudio } from './services/transcriptionPipeline';
 import { isAuthenticated as checkAuth, getAccessToken } from './services/SpotifyAuth';
 import { getCurrentUser } from './services/SpotifyService';
 import {
@@ -16,18 +14,13 @@ import {
   onDeviceReady,
   onPlayerError,
 } from './services/SpotifyPlayer';
-import {
-  generateChordProgression,
-  guessProgression,
-} from './services/chordDetection';
-import type { Song } from './types/song';
+import { transcribeSpotifyTrack } from './services/spotifyTranscriber';
 
 function App() {
-  const { song, loadSong, tick } = useGhostStore();
+  const { song, loadSong, tick } = useAppStore();
   const {
     isAuthenticated: isSpotifyAuth,
     currentTrack,
-    isSpotifyPlaying,
     error: spotifyError,
     setAuthenticated,
     setUser,
@@ -37,7 +30,8 @@ function App() {
     setError: setSpotifyError,
   } = useSpotifyStore();
 
-  const [demoLoaded, setDemoLoaded] = useState(false);
+  const isTranscribingRef = useRef(false);
+  const lastTranscribedTrackRef = useRef<string | null>(null);
 
   // Check if already authenticated on mount
   useEffect(() => {
@@ -62,7 +56,6 @@ function App() {
 
     onPlayerStateChange((state) => {
       updatePlaybackState(state);
-      // Sync Spotify position with GhostStore for fretboard animation
       tick(state.positionMs / 1000);
     });
 
@@ -71,82 +64,50 @@ function App() {
     });
   }, [isSpotifyAuth, setDeviceId, setPlayerReady, updatePlaybackState, setSpotifyError, tick]);
 
-  // When a Spotify track starts playing, generate chord events for the ghost hand
+  // Transcribe track on selection
+  const handleTranscribe = useCallback(async (track: typeof currentTrack) => {
+    if (!track || isTranscribingRef.current || lastTranscribedTrackRef.current === track.id) return;
+    isTranscribingRef.current = true;
+    lastTranscribedTrackRef.current = track.id;
+
+    try {
+      const transcribedSong = await transcribeSpotifyTrack(
+        track.id,
+        track.name,
+        track.artists.map((a) => a.name).join(', '),
+        track.duration_ms,
+        track.uri,
+      );
+      loadSong(transcribedSong);
+    } catch (err) {
+      console.error('Transcription failed:', err);
+      setSpotifyError('Failed to generate tabs for this track');
+    } finally {
+      isTranscribingRef.current = false;
+    }
+  }, [loadSong, setSpotifyError]);
+
   useEffect(() => {
-    if (!currentTrack || !isSpotifyPlaying) return;
-
-    const progression = guessProgression(
-      currentTrack.name,
-      currentTrack.artists.map((a) => a.name).join(', ')
-    );
-    const events = generateChordProgression(
-      currentTrack.duration_ms,
-      4,
-      120,
-      progression
-    );
-
-    const spotifySong: Song = {
-      id: `spotify-${currentTrack.id}`,
-      title: currentTrack.name,
-      artist: currentTrack.artists.map((a) => a.name).join(', '),
-      duration: currentTrack.duration_ms / 1000,
-      bpm: 120,
-      timeSignature: [4, 4],
-      audioSrc: currentTrack.uri,
-      tuning: ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'],
-      capo: 0,
-      tracks: {
-        beginner: { events, tempoMultiplier: 0.75 },
-        professional: { events, tempoMultiplier: 1.0 },
-      },
-      metadata: {
-        confidence: 0.7,
-        transcriptionEngine: 'spotify-chords',
-        transcribedAt: new Date().toISOString(),
-      },
-    };
-
-    loadSong(spotifySong);
-  }, [currentTrack, isSpotifyPlaying, loadSong]);
-
-  // Load demo song on mount (only if not using Spotify)
-  useEffect(() => {
-    if (isSpotifyAuth || demoLoaded) return;
-    let cancelled = false;
-
-    transcribeAudio('demo').then((demoSong) => {
-      if (!cancelled) {
-        console.log('[GhostGuitar] Demo song loaded:', demoSong.title);
-        loadSong(demoSong);
-        setDemoLoaded(true);
-      }
-    });
-
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isSpotifyAuth]);
+    handleTranscribe(currentTrack);
+  }, [currentTrack, handleTranscribe]);
 
   return (
-    <ErrorBoundary label="GhostGuitar App">
-      <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-violet-950">
+    <ErrorBoundary label="App">
+      <div className="min-h-screen bg-gray-950 text-gray-200">
         {/* Header */}
         <header className="border-b border-gray-800/50 px-6 py-4">
           <div className="mx-auto flex max-w-5xl items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-purple-700 text-lg font-bold text-white shadow-lg shadow-violet-500/20">
-                G
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-600 text-sm font-bold text-white">
+                GT
               </div>
               <div>
-                <h1 className="text-lg font-bold text-white">GhostGuitar</h1>
-                <p className="text-xs text-gray-500">
-                  AI-Powered Guitar Learning
-                </p>
+                <h1 className="text-lg font-bold text-white">Guitar Tabs</h1>
+                <p className="text-xs text-gray-500">Spotify to Tabs & Chords</p>
               </div>
             </div>
             <div className="flex items-center gap-4">
               <SpotifyLoginButton />
-              <div className="text-xs text-gray-600">v0.4.0</div>
             </div>
           </div>
         </header>
@@ -154,32 +115,27 @@ function App() {
         {/* Main content */}
         <main className="mx-auto max-w-5xl px-6 py-8">
           <div className="space-y-6">
-            {/* Spotify Error */}
+            {/* Error banner */}
             {spotifyError && (
               <div className="spotify-error">
-                <span>⚠ {spotifyError}</span>
-                <button
-                  className="spotify-error-dismiss"
-                  onClick={() => setSpotifyError(null)}
-                >
-                  ✕
+                <span>{spotifyError}</span>
+                <button className="spotify-error-dismiss" onClick={() => setSpotifyError(null)}>
+                  X
                 </button>
               </div>
             )}
 
-            {/* Spotify Search — first thing after login */}
+            {/* Spotify Search */}
             {isSpotifyAuth && (
               <section>
-                <h2 className="mb-3 text-sm font-medium text-gray-500">
-                  Search a Song
-                </h2>
-                <ErrorBoundary label="Spotify Search">
+                <h2 className="mb-3 text-sm font-medium text-gray-500">Search a Song</h2>
+                <ErrorBoundary label="Search">
                   <SpotifySearch />
                 </ErrorBoundary>
               </section>
             )}
 
-            {/* Now Playing (when a track is selected) */}
+            {/* Now Playing */}
             {isSpotifyAuth && currentTrack && (
               <section>
                 <ErrorBoundary label="Now Playing">
@@ -188,43 +144,31 @@ function App() {
               </section>
             )}
 
-            {/* Fretboard visualization */}
+            {/* Fretboard + Sheet */}
             {song && (
               <>
                 <section>
-                  <h2 className="mb-3 text-sm font-medium text-gray-500">
-                    Fretboard
-                  </h2>
-                  <GhostFretboard />
+                  <h2 className="mb-3 text-sm font-medium text-gray-500">Fretboard</h2>
+                  <FretboardPanel />
                 </section>
-
-                {/* Playback controls (only for demo/local audio, not Spotify) */}
-                {!currentTrack && (
-                  <section>
-                    <ErrorBoundary label="Playback Controls">
-                      <PlaybackControls />
-                    </ErrorBoundary>
-                  </section>
-                )}
 
                 {/* Info panel */}
                 <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                   <InfoCard label="Tuning" value={song.tuning.join(' ')} />
                   <InfoCard label="BPM" value={String(song.bpm)} />
-                  <InfoCard
-                    label="Confidence"
-                    value={`${(song.metadata.confidence * 100).toFixed(0)}%`}
-                  />
+                  <InfoCard label="Confidence" value={`${(song.metadata.confidence * 100).toFixed(0)}%`} />
                   <InfoCard label="Engine" value={song.metadata.transcriptionEngine} />
                 </section>
               </>
             )}
 
             {/* Login prompt when not authenticated */}
-            {!isSpotifyAuth && !song && (
+            {!isSpotifyAuth && (
               <div className="flex flex-col items-center justify-center py-20 text-center">
-                <p className="text-gray-400 mb-6">
-                  Connect your Spotify account to search and play any song
+                <h2 className="text-xl font-bold text-white mb-2">Spotify Guitar Tabs</h2>
+                <p className="text-gray-400 mb-6 max-w-md">
+                  Connect your Spotify account to search any song and instantly generate
+                  guitar tabs and chord sheets.
                 </p>
                 <SpotifyLoginButton />
               </div>
