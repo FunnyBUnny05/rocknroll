@@ -2,7 +2,7 @@
  * Spotify Web Playback SDK Integration
  *
  * Creates a Spotify Connect device in the browser.
- * Requires Spotify Premium. Syncs playback state with GhostStore.
+ * Requires Spotify Premium. Syncs playback state with the app store.
  */
 
 import { getValidToken } from './SpotifyAuth';
@@ -136,7 +136,7 @@ export async function initializePlayer(): Promise<void> {
     if (player) return;
 
     player = new window.Spotify.Player({
-        name: 'GhostGuitar',
+        name: 'Guitar Tabs',
         getOAuthToken: async (cb) => {
             const token = await getValidToken();
             if (token) cb(token);
@@ -148,7 +148,7 @@ export async function initializePlayer(): Promise<void> {
     player.addListener('ready', (data: unknown) => {
         const { device_id } = data as { device_id: string };
         currentDeviceId = device_id;
-        console.log('🎸 GhostGuitar player ready, device:', device_id);
+        console.log('🎸 Guitar Tabs player ready, device:', device_id);
 
         // Transfer playback to this device
         transferPlayback(device_id, false).catch(console.error);
@@ -239,7 +239,7 @@ function startPositionPolling(): void {
                 albumArt: track.album.images[0]?.url ?? '',
             });
         }
-    }, 200); // 5 updates/sec for smooth ghost hand sync
+    }, 200); // 5 updates/sec for smooth fretboard sync
 }
 
 function stopPositionPolling(): void {

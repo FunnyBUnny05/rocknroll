@@ -1,15 +1,8 @@
 @import "tailwindcss";
 
-:root {
-  --ghost-primary: #8b5cf6;
-  --ghost-glow: #a78bfa;
-  --fretboard-wood: #4a3728;
-  --string-silver: #c0c0c0;
-}
-
 body {
   margin: 0;
-  background: #0f0f1a;
+  background: #0a0a0f;
   color: #e2e8f0;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   overflow-x: hidden;

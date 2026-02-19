@@ -14,8 +14,6 @@ interface State {
 
 /**
  * ErrorBoundary - Catches render errors so the rest of the app survives.
- * Wraps risky areas (3D canvas, transcription UI) with a visible fallback
- * instead of a white screen of death.
  */
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
@@ -29,7 +27,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error(
-      `[GhostGuitar] ErrorBoundary (${this.props.label}) caught:`,
+      `[ErrorBoundary] (${this.props.label}) caught:`,
       error,
       info.componentStack
     );

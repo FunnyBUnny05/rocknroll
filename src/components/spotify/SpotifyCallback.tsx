@@ -60,7 +60,7 @@ export function SpotifyCallback() {
                         href={import.meta.env.BASE_URL || '/'}
                         style={{ color: '#1DB954', marginTop: 8 }}
                     >
-                        Back to GhostGuitar
+                        Back to Guitar Tabs
                     </a>
                 </>
             )}

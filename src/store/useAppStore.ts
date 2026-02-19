@@ -1,30 +1,18 @@
 import { create } from 'zustand';
-import type { Song, SongEvent, HandPose } from '../types/song';
+import type { Song, SongEvent } from '../types/song';
 
 export type DifficultyMode = 'beginner' | 'professional';
 export type ViewMode = 'chord' | 'tab';
 
-interface PlaybackState {
-  /** Currently loaded song */
+interface AppState {
   song: Song | null;
-  /** Is audio playing */
   isPlaying: boolean;
-  /** Current playback time in seconds */
   currentTime: number;
-  /** Playback speed multiplier */
-  playbackRate: number;
-  /** Current difficulty mode */
   mode: DifficultyMode;
-  /** Current view mode (chord shapes vs tablature) */
   viewMode: ViewMode;
-  /** Currently active event based on playback position */
   activeEvent: SongEvent | null;
-  /** Current hand pose for the Ghost Hand */
-  activeHandPose: HandPose | null;
-  /** Whether the audio engine is ready */
   isReady: boolean;
 
-  // Actions
   loadSong: (song: Song) => void;
   play: () => void;
   pause: () => void;
@@ -32,24 +20,20 @@ interface PlaybackState {
   seek: (time: number) => void;
   setMode: (mode: DifficultyMode) => void;
   setViewMode: (viewMode: ViewMode) => void;
-  setPlaybackRate: (rate: number) => void;
   tick: (currentTime: number) => void;
 }
 
 /**
- * Central state store for GhostGuitar playback synchronization.
- * Uses Zustand for high-performance updates that keep the Ghost Hand
- * perfectly synced with audio playback.
+ * Central state store for playback synchronization.
+ * Keeps the fretboard and sheet display synced with Spotify playback.
  */
-export const useGhostStore = create<PlaybackState>((set, get) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   song: null,
   isPlaying: false,
   currentTime: 0,
-  playbackRate: 1,
   mode: 'beginner',
   viewMode: 'chord',
   activeEvent: null,
-  activeHandPose: null,
   isReady: false,
 
   loadSong: (song: Song) => {
@@ -58,7 +42,6 @@ export const useGhostStore = create<PlaybackState>((set, get) => ({
       currentTime: 0,
       isPlaying: false,
       activeEvent: null,
-      activeHandPose: null,
       isReady: true,
     });
   },
@@ -72,7 +55,6 @@ export const useGhostStore = create<PlaybackState>((set, get) => ({
       isPlaying: false,
       currentTime: 0,
       activeEvent: null,
-      activeHandPose: null,
     }),
 
   seek: (time: number) => {
@@ -89,11 +71,9 @@ export const useGhostStore = create<PlaybackState>((set, get) => ({
 
   setViewMode: (viewMode: ViewMode) => set({ viewMode }),
 
-  setPlaybackRate: (rate: number) => set({ playbackRate: rate }),
-
   /**
-   * Called on every animation frame during playback.
-   * Finds the active event and hand pose for the current timestamp.
+   * Called on every playback position update.
+   * Finds the active event for the current timestamp.
    */
   tick: (currentTime: number) => {
     const { song, mode } = get();
@@ -111,10 +91,6 @@ export const useGhostStore = create<PlaybackState>((set, get) => ({
       }
     }
 
-    set({
-      currentTime,
-      activeEvent,
-      activeHandPose: activeEvent?.handPose ?? null,
-    });
+    set({ currentTime, activeEvent });
   },
 }));

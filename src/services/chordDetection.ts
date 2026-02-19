@@ -1,16 +1,11 @@
 /**
- * Chord Detection from Chroma Analysis
+ * Chord Progression Generation (Fallback)
  *
- * Since Spotify's /audio-analysis endpoint is deprecated for new apps,
- * this module provides chord detection from timestamps using a built-in
- * chord progression database for common songs, plus a fallback that
- * generates plausible chord sequences based on key/tempo patterns.
- *
- * When Basic Pitch integration is available, this can be extended to
- * detect chords from the audio stream in real-time.
+ * Built-in chord progression database for common songs.
+ * Used when Spotify Audio Analysis API is unavailable.
  */
 
-import type { SongEvent, ChordShape, FingerPlacement, HandPose } from '../types/song';
+import type { SongEvent, ChordShape, FingerPlacement } from '../types/song';
 
 // --- Common Chord Library ---
 
@@ -24,8 +19,7 @@ interface ChordTemplate {
 
 const CHORD_LIBRARY: Record<string, ChordTemplate> = {
     C: {
-        name: 'C Major',
-        symbol: 'C',
+        name: 'C Major', symbol: 'C',
         placements: [
             { string: 2, fret: 1, finger: 1 },
             { string: 4, fret: 2, finger: 2 },
@@ -34,8 +28,7 @@ const CHORD_LIBRARY: Record<string, ChordTemplate> = {
         mutedStrings: [6],
     },
     Am: {
-        name: 'A Minor',
-        symbol: 'Am',
+        name: 'A Minor', symbol: 'Am',
         placements: [
             { string: 2, fret: 1, finger: 1 },
             { string: 3, fret: 2, finger: 2 },
@@ -44,8 +37,7 @@ const CHORD_LIBRARY: Record<string, ChordTemplate> = {
         mutedStrings: [6],
     },
     G: {
-        name: 'G Major',
-        symbol: 'G',
+        name: 'G Major', symbol: 'G',
         placements: [
             { string: 5, fret: 2, finger: 1 },
             { string: 6, fret: 3, finger: 2 },
@@ -54,8 +46,7 @@ const CHORD_LIBRARY: Record<string, ChordTemplate> = {
         mutedStrings: [],
     },
     D: {
-        name: 'D Major',
-        symbol: 'D',
+        name: 'D Major', symbol: 'D',
         placements: [
             { string: 3, fret: 2, finger: 1 },
             { string: 1, fret: 2, finger: 2 },
@@ -64,8 +55,7 @@ const CHORD_LIBRARY: Record<string, ChordTemplate> = {
         mutedStrings: [5, 6],
     },
     Dm: {
-        name: 'D Minor',
-        symbol: 'Dm',
+        name: 'D Minor', symbol: 'Dm',
         placements: [
             { string: 1, fret: 1, finger: 1 },
             { string: 3, fret: 2, finger: 2 },
@@ -74,8 +64,7 @@ const CHORD_LIBRARY: Record<string, ChordTemplate> = {
         mutedStrings: [5, 6],
     },
     E: {
-        name: 'E Major',
-        symbol: 'E',
+        name: 'E Major', symbol: 'E',
         placements: [
             { string: 3, fret: 1, finger: 1 },
             { string: 4, fret: 2, finger: 2 },
@@ -84,8 +73,7 @@ const CHORD_LIBRARY: Record<string, ChordTemplate> = {
         mutedStrings: [],
     },
     Em: {
-        name: 'E Minor',
-        symbol: 'Em',
+        name: 'E Minor', symbol: 'Em',
         placements: [
             { string: 4, fret: 2, finger: 1 },
             { string: 5, fret: 2, finger: 2 },
@@ -93,8 +81,7 @@ const CHORD_LIBRARY: Record<string, ChordTemplate> = {
         mutedStrings: [],
     },
     F: {
-        name: 'F Major',
-        symbol: 'F',
+        name: 'F Major', symbol: 'F',
         placements: [
             { string: 1, fret: 1, finger: 1 },
             { string: 2, fret: 1, finger: 1 },
@@ -106,8 +93,7 @@ const CHORD_LIBRARY: Record<string, ChordTemplate> = {
         barreFret: 1,
     },
     A: {
-        name: 'A Major',
-        symbol: 'A',
+        name: 'A Major', symbol: 'A',
         placements: [
             { string: 4, fret: 2, finger: 1 },
             { string: 3, fret: 2, finger: 2 },
@@ -116,8 +102,7 @@ const CHORD_LIBRARY: Record<string, ChordTemplate> = {
         mutedStrings: [6],
     },
     B7: {
-        name: 'B7',
-        symbol: 'B7',
+        name: 'B7', symbol: 'B7',
         placements: [
             { string: 4, fret: 1, finger: 1 },
             { string: 1, fret: 2, finger: 2 },
@@ -129,18 +114,15 @@ const CHORD_LIBRARY: Record<string, ChordTemplate> = {
 };
 
 // --- Common Chord Progressions ---
-// Key → array of chord names, cycled at the given BPM
 
 const COMMON_PROGRESSIONS: Record<string, string[]> = {
-    pop: ['C', 'G', 'Am', 'F'],        // I-V-vi-IV
-    rock: ['E', 'A', 'D', 'A'],        // I-IV-V-IV
-    blues: ['E', 'E', 'A', 'E', 'B7', 'A', 'E', 'B7'],  // 12-bar blues
-    folk: ['G', 'Em', 'C', 'D'],       // I-vi-IV-V
-    minor: ['Am', 'Dm', 'G', 'C'],     // i-iv-VII-III
-    latin: ['Am', 'E', 'Am', 'Dm'],    // Minor Latin
+    pop: ['C', 'G', 'Am', 'F'],
+    rock: ['E', 'A', 'D', 'A'],
+    blues: ['E', 'E', 'A', 'E', 'B7', 'A', 'E', 'B7'],
+    folk: ['G', 'Em', 'C', 'D'],
+    minor: ['Am', 'Dm', 'G', 'C'],
+    latin: ['Am', 'E', 'Am', 'Dm'],
 };
-
-// --- Chord Generation ---
 
 function chordToShape(template: ChordTemplate): ChordShape {
     return {
@@ -152,32 +134,8 @@ function chordToShape(template: ChordTemplate): ChordShape {
     };
 }
 
-function generateHandPose(
-    time: number,
-    duration: number,
-    placements: FingerPlacement[]
-): HandPose {
-    const avgFret =
-        placements.length > 0
-            ? placements.reduce((sum, p) => sum + p.fret, 0) / placements.length
-            : 0;
-
-    return {
-        time,
-        duration,
-        placements,
-        wristAngle: avgFret > 5 ? -10 : 0,
-        handPosition: Math.max(1, Math.round(avgFret)),
-    };
-}
-
 /**
  * Generate chord events for a track duration using a progression pattern.
- *
- * @param durationMs - Track duration in milliseconds
- * @param beatsPerChord - How many beats per chord change (default: 4 = 1 bar)
- * @param bpm - Tempo (default 120)
- * @param progressionKey - Key into COMMON_PROGRESSIONS
  */
 export function generateChordProgression(
     durationMs: number,
@@ -205,7 +163,6 @@ export function generateChordProgression(
                 duration,
                 type: 'chord',
                 chord: chordToShape(template),
-                handPose: generateHandPose(currentTime, duration, template.placements),
             });
         }
 
@@ -218,7 +175,6 @@ export function generateChordProgression(
 
 /**
  * Select the best progression for a track based on its name/artist.
- * Simple heuristic — can be made smarter with genre data.
  */
 export function guessProgression(
     trackName: string,
@@ -232,11 +188,5 @@ export function guessProgression(
     if (text.includes('latin') || text.includes('bossa')) return 'latin';
     if (text.includes('minor') || text.includes('sad')) return 'minor';
 
-    // Default to the most common pop progression
     return 'pop';
-}
-
-/** Get all available chord names */
-export function getAvailableChords(): string[] {
-    return Object.keys(CHORD_LIBRARY);
 }
