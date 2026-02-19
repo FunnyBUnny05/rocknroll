@@ -354,7 +354,7 @@ export async function transcribeSpotifyTrack(
                     }));
                 } else {
                     tabEvents = resultEvents;
-                    chordEvents = resultEvents.filter((e: any) => e.type === 'chord');
+                    chordEvents = resultEvents.filter((e: { type: string }) => e.type === 'chord');
                     // Ensure all tab notes are mapped back into chord format if they exist
                 }
                 hasDeepseekRun = true;
