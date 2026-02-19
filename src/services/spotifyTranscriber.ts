@@ -290,13 +290,19 @@ export async function transcribeSpotifyTrack(
     durationMs: number,
     trackUri: string,
 ): Promise<Song> {
-    let chordEvents: SongEvent[];
-    let tabEvents: SongEvent[];
+    let chordEvents: SongEvent[] = [];
+    let tabEvents: SongEvent[] = [];
     let bpm = 120;
     let timeSignature: [number, number] = [4, 4];
     let engine = 'chord-progression';
     let confidence = 0.5;
     let lyricsAligned: { time: number; text: string }[] | undefined = undefined;
+
+    interface DeepSeekResult {
+        tuning: string;
+        events: SongEvent[];
+        lyricsAligned?: { time: number; text: string }[];
+    }
 
     try {
         const { deepseekApiKey, level } = useSettingsStore.getState();
@@ -333,10 +339,10 @@ export async function transcribeSpotifyTrack(
                     keyEstimates: data.sections.map(s => s.key).filter((v, i, a) => a.indexOf(v) === i)
                 };
 
-                const dsResult = await generateGuitarInstructions(trackName, artistName, summary);
+                const dsResult = await generateGuitarInstructions(trackName, artistName, summary) as unknown as DeepSeekResult;
 
                 // The prompt uses generic 'events', so we map them to both for now or just the selected one
-                const resultEvents = dsResult.events || [];
+                const resultEvents: SongEvent[] = dsResult.events || [];
                 lyricsAligned = dsResult.lyricsAligned;
 
                 if (level === 'Beginner') {
@@ -347,14 +353,14 @@ export async function transcribeSpotifyTrack(
                         duration: evt.duration,
                         type: 'tab' as const,
                         notes: evt.chord?.placements?.map(p => ({
-                            string: p.string,
+                            string: p.string as 1 | 2 | 3 | 4 | 5 | 6,
                             fret: p.fret,
                             duration: evt.duration,
                         })) ?? [],
                     }));
                 } else {
                     tabEvents = resultEvents;
-                    chordEvents = resultEvents.filter((e: { type: string }) => e.type === 'chord');
+                    chordEvents = resultEvents.filter((e) => e.type === 'chord');
                     // Ensure all tab notes are mapped back into chord format if they exist
                 }
                 hasDeepseekRun = true;
@@ -397,8 +403,8 @@ export async function transcribeSpotifyTrack(
         tuning: ['E2', 'A2', 'D3', 'G3', 'B3', 'E4'],
         capo: 0,
         tracks: {
-            beginner: { events: chordEvents, tempoMultiplier: 0.75 },
-            professional: { events: tabEvents, tempoMultiplier: 1.0 },
+            beginner: { events: chordEvents || [], tempoMultiplier: 0.75 },
+            professional: { events: tabEvents || [], tempoMultiplier: 1.0 },
         },
         lyricsAligned,
         metadata: {
