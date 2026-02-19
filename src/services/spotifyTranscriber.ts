@@ -13,6 +13,8 @@ import type { Song, SongEvent, FingerPlacement, TabNote } from '../types/song';
 import type { SpotifyAudioAnalysis, SpotifySegment, SpotifySection } from './SpotifyService';
 import { getAudioAnalysis, getAudioFeatures } from './SpotifyService';
 import { generateChordProgression, guessProgression } from './chordDetection';
+import { generateGuitarInstructions } from './deepseekService';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 // --- Pitch class names (chroma index → note name) ---
 const PITCH_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -34,36 +36,66 @@ interface ChordTemplate {
 }
 
 const CHORD_TEMPLATES: ChordTemplate[] = [
-    { name: 'C Major', symbol: 'C', chroma: [1,0,0,0,1,0,0,1,0,0,0,0],
-      placements: [{ string: 2, fret: 1, finger: 1 }, { string: 4, fret: 2, finger: 2 }, { string: 5, fret: 3, finger: 3 }], mutedStrings: [6] },
-    { name: 'C# Major', symbol: 'C#', chroma: [0,1,0,0,0,1,0,0,1,0,0,0],
-      placements: [{ string: 1, fret: 1, finger: 1 }, { string: 2, fret: 1, finger: 1 }, { string: 3, fret: 1, finger: 1 }, { string: 4, fret: 3, finger: 2 }, { string: 5, fret: 4, finger: 3 }, { string: 6, fret: 4, finger: 4 }], mutedStrings: [], barreFret: 1 },
-    { name: 'D Major', symbol: 'D', chroma: [0,0,1,0,0,0,1,0,0,1,0,0],
-      placements: [{ string: 3, fret: 2, finger: 1 }, { string: 1, fret: 2, finger: 2 }, { string: 2, fret: 3, finger: 3 }], mutedStrings: [5, 6] },
-    { name: 'D Minor', symbol: 'Dm', chroma: [0,0,1,0,0,1,0,0,0,1,0,0],
-      placements: [{ string: 1, fret: 1, finger: 1 }, { string: 3, fret: 2, finger: 2 }, { string: 2, fret: 3, finger: 3 }], mutedStrings: [5, 6] },
-    { name: 'E Major', symbol: 'E', chroma: [0,0,0,0,1,0,0,0,1,0,0,1],
-      placements: [{ string: 3, fret: 1, finger: 1 }, { string: 4, fret: 2, finger: 2 }, { string: 5, fret: 2, finger: 3 }], mutedStrings: [] },
-    { name: 'E Minor', symbol: 'Em', chroma: [0,0,0,0,1,0,0,1,0,0,0,1],
-      placements: [{ string: 4, fret: 2, finger: 1 }, { string: 5, fret: 2, finger: 2 }], mutedStrings: [] },
-    { name: 'F Major', symbol: 'F', chroma: [1,0,0,0,0,1,0,0,0,1,0,0],
-      placements: [{ string: 1, fret: 1, finger: 1 }, { string: 2, fret: 1, finger: 1 }, { string: 3, fret: 2, finger: 2 }, { string: 4, fret: 3, finger: 3 }, { string: 5, fret: 3, finger: 4 }], mutedStrings: [6], barreFret: 1 },
-    { name: 'G Major', symbol: 'G', chroma: [0,0,1,0,0,0,0,1,0,0,0,1],
-      placements: [{ string: 5, fret: 2, finger: 1 }, { string: 6, fret: 3, finger: 2 }, { string: 1, fret: 3, finger: 3 }], mutedStrings: [] },
-    { name: 'A Major', symbol: 'A', chroma: [0,1,0,0,1,0,0,0,0,1,0,0],
-      placements: [{ string: 4, fret: 2, finger: 1 }, { string: 3, fret: 2, finger: 2 }, { string: 2, fret: 2, finger: 3 }], mutedStrings: [6] },
-    { name: 'A Minor', symbol: 'Am', chroma: [1,0,0,0,1,0,0,0,0,1,0,0],
-      placements: [{ string: 2, fret: 1, finger: 1 }, { string: 3, fret: 2, finger: 2 }, { string: 4, fret: 2, finger: 3 }], mutedStrings: [6] },
-    { name: 'B Major', symbol: 'B', chroma: [0,0,1,0,0,0,1,0,0,0,0,1],
-      placements: [{ string: 1, fret: 2, finger: 1 }, { string: 2, fret: 2, finger: 1 }, { string: 3, fret: 2, finger: 1 }, { string: 4, fret: 4, finger: 2 }, { string: 5, fret: 4, finger: 3 }, { string: 6, fret: 4, finger: 4 }], mutedStrings: [], barreFret: 2 },
-    { name: 'B7', symbol: 'B7', chroma: [0,0,1,0,0,0,1,0,0,1,0,1],
-      placements: [{ string: 4, fret: 1, finger: 1 }, { string: 1, fret: 2, finger: 2 }, { string: 3, fret: 2, finger: 3 }, { string: 5, fret: 2, finger: 4 }], mutedStrings: [6] },
-    { name: 'F# Minor', symbol: 'F#m', chroma: [0,1,0,0,0,0,1,0,0,1,0,0],
-      placements: [{ string: 1, fret: 2, finger: 1 }, { string: 2, fret: 2, finger: 1 }, { string: 3, fret: 2, finger: 1 }, { string: 4, fret: 4, finger: 3 }, { string: 5, fret: 4, finger: 4 }], mutedStrings: [6], barreFret: 2 },
-    { name: 'B Minor', symbol: 'Bm', chroma: [0,0,1,0,0,0,1,0,0,0,0,1],
-      placements: [{ string: 1, fret: 2, finger: 1 }, { string: 2, fret: 2, finger: 1 }, { string: 3, fret: 4, finger: 3 }, { string: 4, fret: 4, finger: 4 }, { string: 5, fret: 2, finger: 1 }], mutedStrings: [6], barreFret: 2 },
-    { name: 'G Minor', symbol: 'Gm', chroma: [0,0,1,0,0,0,0,1,0,0,1,0],
-      placements: [{ string: 1, fret: 3, finger: 1 }, { string: 2, fret: 3, finger: 1 }, { string: 3, fret: 3, finger: 1 }, { string: 4, fret: 5, finger: 3 }, { string: 5, fret: 5, finger: 4 }, { string: 6, fret: 3, finger: 1 }], mutedStrings: [], barreFret: 3 },
+    {
+        name: 'C Major', symbol: 'C', chroma: [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
+        placements: [{ string: 2, fret: 1, finger: 1 }, { string: 4, fret: 2, finger: 2 }, { string: 5, fret: 3, finger: 3 }], mutedStrings: [6]
+    },
+    {
+        name: 'C# Major', symbol: 'C#', chroma: [0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+        placements: [{ string: 1, fret: 1, finger: 1 }, { string: 2, fret: 1, finger: 1 }, { string: 3, fret: 1, finger: 1 }, { string: 4, fret: 3, finger: 2 }, { string: 5, fret: 4, finger: 3 }, { string: 6, fret: 4, finger: 4 }], mutedStrings: [], barreFret: 1
+    },
+    {
+        name: 'D Major', symbol: 'D', chroma: [0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0],
+        placements: [{ string: 3, fret: 2, finger: 1 }, { string: 1, fret: 2, finger: 2 }, { string: 2, fret: 3, finger: 3 }], mutedStrings: [5, 6]
+    },
+    {
+        name: 'D Minor', symbol: 'Dm', chroma: [0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0],
+        placements: [{ string: 1, fret: 1, finger: 1 }, { string: 3, fret: 2, finger: 2 }, { string: 2, fret: 3, finger: 3 }], mutedStrings: [5, 6]
+    },
+    {
+        name: 'E Major', symbol: 'E', chroma: [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1],
+        placements: [{ string: 3, fret: 1, finger: 1 }, { string: 4, fret: 2, finger: 2 }, { string: 5, fret: 2, finger: 3 }], mutedStrings: []
+    },
+    {
+        name: 'E Minor', symbol: 'Em', chroma: [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1],
+        placements: [{ string: 4, fret: 2, finger: 1 }, { string: 5, fret: 2, finger: 2 }], mutedStrings: []
+    },
+    {
+        name: 'F Major', symbol: 'F', chroma: [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0],
+        placements: [{ string: 1, fret: 1, finger: 1 }, { string: 2, fret: 1, finger: 1 }, { string: 3, fret: 2, finger: 2 }, { string: 4, fret: 3, finger: 3 }, { string: 5, fret: 3, finger: 4 }], mutedStrings: [6], barreFret: 1
+    },
+    {
+        name: 'G Major', symbol: 'G', chroma: [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
+        placements: [{ string: 5, fret: 2, finger: 1 }, { string: 6, fret: 3, finger: 2 }, { string: 1, fret: 3, finger: 3 }], mutedStrings: []
+    },
+    {
+        name: 'A Major', symbol: 'A', chroma: [0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
+        placements: [{ string: 4, fret: 2, finger: 1 }, { string: 3, fret: 2, finger: 2 }, { string: 2, fret: 2, finger: 3 }], mutedStrings: [6]
+    },
+    {
+        name: 'A Minor', symbol: 'Am', chroma: [1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
+        placements: [{ string: 2, fret: 1, finger: 1 }, { string: 3, fret: 2, finger: 2 }, { string: 4, fret: 2, finger: 3 }], mutedStrings: [6]
+    },
+    {
+        name: 'B Major', symbol: 'B', chroma: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+        placements: [{ string: 1, fret: 2, finger: 1 }, { string: 2, fret: 2, finger: 1 }, { string: 3, fret: 2, finger: 1 }, { string: 4, fret: 4, finger: 2 }, { string: 5, fret: 4, finger: 3 }, { string: 6, fret: 4, finger: 4 }], mutedStrings: [], barreFret: 2
+    },
+    {
+        name: 'B7', symbol: 'B7', chroma: [0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1],
+        placements: [{ string: 4, fret: 1, finger: 1 }, { string: 1, fret: 2, finger: 2 }, { string: 3, fret: 2, finger: 3 }, { string: 5, fret: 2, finger: 4 }], mutedStrings: [6]
+    },
+    {
+        name: 'F# Minor', symbol: 'F#m', chroma: [0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0],
+        placements: [{ string: 1, fret: 2, finger: 1 }, { string: 2, fret: 2, finger: 1 }, { string: 3, fret: 2, finger: 1 }, { string: 4, fret: 4, finger: 3 }, { string: 5, fret: 4, finger: 4 }], mutedStrings: [6], barreFret: 2
+    },
+    {
+        name: 'B Minor', symbol: 'Bm', chroma: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+        placements: [{ string: 1, fret: 2, finger: 1 }, { string: 2, fret: 2, finger: 1 }, { string: 3, fret: 4, finger: 3 }, { string: 4, fret: 4, finger: 4 }, { string: 5, fret: 2, finger: 1 }], mutedStrings: [6], barreFret: 2
+    },
+    {
+        name: 'G Minor', symbol: 'Gm', chroma: [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 0],
+        placements: [{ string: 1, fret: 3, finger: 1 }, { string: 2, fret: 3, finger: 1 }, { string: 3, fret: 3, finger: 1 }, { string: 4, fret: 5, finger: 3 }, { string: 5, fret: 5, finger: 4 }, { string: 6, fret: 3, finger: 1 }], mutedStrings: [], barreFret: 3
+    },
 ];
 
 // --- Chroma matching ---
@@ -264,30 +296,80 @@ export async function transcribeSpotifyTrack(
     let timeSignature: [number, number] = [4, 4];
     let engine = 'chord-progression';
     let confidence = 0.5;
+    let lyricsAligned: { time: number; text: string }[] | undefined = undefined;
 
     try {
+        const { deepseekApiKey, level } = useSettingsStore.getState();
+
         // Try Audio Analysis API
         const [analysis, features] = await Promise.allSettled([
             getAudioAnalysis(trackId),
             getAudioFeatures(trackId),
         ]);
 
+        let hasDeepseekRun = false;
+
         if (analysis.status === 'fulfilled' && analysis.value.segments.length > 0) {
             const data = analysis.value;
-            chordEvents = analysisToChordEvents(data);
-            tabEvents = analysisToTabEvents(data);
+            // Get base data
             bpm = extractTempo(data);
             timeSignature = extractTimeSignature(data);
-            engine = 'spotify-audio-analysis';
-            confidence = 0.8;
 
             if (features.status === 'fulfilled') {
                 bpm = Math.round(features.value.tempo) || bpm;
             }
-        } else {
+
+            if (deepseekApiKey) {
+                // Use DeepSeek API
+                engine = 'deepseek-' + level;
+                confidence = 0.9;
+
+                // create a summary of the analysis for DeepSeek
+                const summary = {
+                    totalSegments: data.segments.length,
+                    duration: durationMs / 1000,
+                    bpm,
+                    timeSignature,
+                    keyEstimates: data.sections.map(s => s.key).filter((v, i, a) => a.indexOf(v) === i)
+                };
+
+                const dsResult = await generateGuitarInstructions(trackName, artistName, summary);
+
+                // The prompt uses generic 'events', so we map them to both for now or just the selected one
+                const resultEvents = dsResult.events || [];
+                lyricsAligned = dsResult.lyricsAligned;
+
+                if (level === 'Beginner') {
+                    chordEvents = resultEvents;
+                    // Provide a simple tab fallback from chords
+                    tabEvents = chordEvents.map(evt => ({
+                        time: evt.time,
+                        duration: evt.duration,
+                        type: 'tab' as const,
+                        notes: evt.chord?.placements?.map(p => ({
+                            string: p.string,
+                            fret: p.fret,
+                            duration: evt.duration,
+                        })) ?? [],
+                    }));
+                } else {
+                    tabEvents = resultEvents;
+                    chordEvents = resultEvents.filter((e: any) => e.type === 'chord');
+                    // Ensure all tab notes are mapped back into chord format if they exist
+                }
+                hasDeepseekRun = true;
+            } else {
+                // Legacy analysis logic
+                chordEvents = analysisToChordEvents(data);
+                tabEvents = analysisToTabEvents(data);
+                engine = 'spotify-audio-analysis';
+                confidence = 0.8;
+            }
+        } else if (!hasDeepseekRun) {
             throw new Error('Audio analysis unavailable');
         }
-    } catch {
+    } catch (err) {
+        console.warn('Transcription error or fallback:', err);
         // Fallback: generate chord progression from heuristics
         const progression = guessProgression(trackName, artistName);
         chordEvents = generateChordProgression(durationMs, 4, bpm, progression);
@@ -318,6 +400,7 @@ export async function transcribeSpotifyTrack(
             beginner: { events: chordEvents, tempoMultiplier: 0.75 },
             professional: { events: tabEvents, tempoMultiplier: 1.0 },
         },
+        lyricsAligned,
         metadata: {
             confidence,
             transcriptionEngine: engine,

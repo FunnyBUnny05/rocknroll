@@ -52,6 +52,7 @@ export function FretboardPanel() {
           events={events}
           activeEvent={activeEvent}
           viewMode={viewMode}
+          lyricsAligned={song?.lyricsAligned}
         />
       )}
     </div>
@@ -73,11 +74,10 @@ function ToggleButton({
   return (
     <button
       onClick={() => onClick(mode)}
-      className={`rounded-md px-4 py-1.5 text-xs font-bold tracking-wide ${
-        isActive
+      className={`rounded-md px-4 py-1.5 text-xs font-bold tracking-wide ${isActive
           ? 'bg-green-600 text-white'
           : 'text-gray-400 hover:text-white'
-      }`}
+        }`}
     >
       {label}
     </button>

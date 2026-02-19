@@ -15,6 +15,7 @@ interface SongSheetProps {
   events: SongEvent[];
   activeEvent: SongEvent | null;
   viewMode: 'chord' | 'tab';
+  lyricsAligned?: { time: number; text: string }[];
 }
 
 const STRING_LABELS = ['e', 'B', 'G', 'D', 'A', 'E'];
@@ -58,9 +59,8 @@ function ChordBar({ events, isActive, barIndex }: { events: SongEvent[]; isActiv
 
   return (
     <div
-      className={`flex-1 min-w-0 border-r border-gray-800 last:border-r-0 px-3 py-2 font-mono text-center ${
-        isActive ? 'bg-green-900/30 text-green-300' : 'text-gray-400'
-      }`}
+      className={`flex-1 min-w-0 border-r border-gray-800 last:border-r-0 px-3 py-2 font-mono text-center ${isActive ? 'bg-green-900/30 text-green-300' : 'text-gray-400'
+        }`}
     >
       <div className={`text-lg font-bold ${isActive ? 'text-green-300' : 'text-gray-300'}`}>
         {display}
@@ -134,11 +134,10 @@ function TabBar({ events, isActive, barIndex }: { events: SongEvent[]; isActive:
 
   return (
     <div
-      className={`rounded-md border px-3 py-2 font-mono text-xs ${
-        isActive
+      className={`rounded-md border px-3 py-2 font-mono text-xs ${isActive
           ? 'border-green-600 bg-green-900/20'
           : 'border-gray-800 bg-gray-950/50'
-      }`}
+        }`}
     >
       <div className="flex items-start gap-0.5 text-[10px] text-gray-500 mb-0.5">
         <span className="w-3" />
@@ -153,11 +152,10 @@ function TabBar({ events, isActive, barIndex }: { events: SongEvent[]; isActive:
           {row.map((fret, col) => (
             <span
               key={col}
-              className={`w-4 text-center ${
-                fret !== '-'
+              className={`w-4 text-center ${fret !== '-'
                   ? isActive ? 'text-green-300 font-bold' : 'text-gray-300'
                   : 'text-gray-700'
-              }`}
+                }`}
             >
               {fret}
             </span>
@@ -193,7 +191,7 @@ function TabView({ bars, activeBarIndex }: { bars: SongEvent[][]; activeBarIndex
 
 // --- Main SongSheet ---
 
-export function SongSheet({ events, activeEvent, viewMode }: SongSheetProps) {
+export function SongSheet({ events, activeEvent, viewMode, lyricsAligned }: SongSheetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const activeRowRef = useRef<HTMLDivElement>(null);
 
@@ -223,32 +221,72 @@ export function SongSheet({ events, activeEvent, viewMode }: SongSheetProps) {
     }
   }, [activeBarIndex]);
 
+  // Active Lyric calculation based on activeEvent time
+  const activeLyricIndex = useMemo(() => {
+    if (!lyricsAligned || !activeEvent) return -1;
+    let closestIndex = -1;
+    let closestDiff = Infinity;
+    for (let i = 0; i < lyricsAligned.length; i++) {
+      const diff = activeEvent.time - lyricsAligned[i].time;
+      if (diff >= 0 && diff < closestDiff) {
+        closestDiff = diff;
+        closestIndex = i;
+      }
+    }
+    return closestIndex;
+  }, [lyricsAligned, activeEvent]);
+
   if (events.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-gray-800 bg-gray-900/60 p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-400">
-          {viewMode === 'chord' ? 'Chord Sheet' : 'Tablature'}
-        </h3>
-        <div className="flex items-center gap-3 text-xs text-gray-600">
-          <span>{bars.length} bars</span>
-          <span>{formatTime(events[events.length - 1]?.time ?? 0)}</span>
+    <div className="flex flex-col gap-4 lg:flex-row">
+      {/* Event/Chord Sheet */}
+      <div className="flex-1 rounded-xl border border-gray-800 bg-gray-900/60 p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-medium text-gray-400">
+            {viewMode === 'chord' ? 'Chord Sheet' : 'Tablature'}
+          </h3>
+          <div className="flex items-center gap-3 text-xs text-gray-600">
+            <span>{bars.length} bars</span>
+            <span>{formatTime(events[events.length - 1]?.time ?? 0)}</span>
+          </div>
+        </div>
+        <div
+          ref={containerRef}
+          className="max-h-80 overflow-y-auto pr-2"
+          style={{ scrollbarWidth: 'thin', scrollbarColor: '#333 transparent' }}
+        >
+          <div ref={activeRowRef}>
+            {viewMode === 'chord' ? (
+              <ChordView bars={bars} activeBarIndex={activeBarIndex} />
+            ) : (
+              <TabView bars={bars} activeBarIndex={activeBarIndex} />
+            )}
+          </div>
         </div>
       </div>
-      <div
-        ref={containerRef}
-        className="max-h-80 overflow-y-auto"
-        style={{ scrollbarWidth: 'thin', scrollbarColor: '#333 transparent' }}
-      >
-        <div ref={activeRowRef}>
-          {viewMode === 'chord' ? (
-            <ChordView bars={bars} activeBarIndex={activeBarIndex} />
-          ) : (
-            <TabView bars={bars} activeBarIndex={activeBarIndex} />
-          )}
+
+      {/* Lyrics sheet if present */}
+      {lyricsAligned && lyricsAligned.length > 0 && (
+        <div className="lg:w-1/3 rounded-xl border border-gray-800 bg-gray-900/60 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-400">Lyrics</h3>
+          </div>
+          <div className="max-h-80 overflow-y-auto space-y-2 pr-2" style={{ scrollbarWidth: 'thin', scrollbarColor: '#333 transparent' }}>
+            {lyricsAligned.map((lyric, idx) => {
+              const isActive = idx === activeLyricIndex;
+              return (
+                <div
+                  key={idx}
+                  className={`text-sm py-1 px-2 rounded-md ${isActive ? 'bg-green-900/50 text-green-300 font-bold' : 'text-gray-400'}`}
+                >
+                  {lyric.text}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

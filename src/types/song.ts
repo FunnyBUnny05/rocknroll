@@ -84,6 +84,8 @@ export interface Song {
   capo: number;
   /** Track data for both difficulty modes */
   tracks: SongTrack;
+  /** Lyrics synced with timestamps */
+  lyricsAligned?: { time: number; text: string }[];
   /** Metadata */
   metadata: {
     transcribedAt: string;
