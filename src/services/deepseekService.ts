@@ -15,17 +15,7 @@ interface GenerationOptions {
 export async function generateGuitarInstructions(
   options: GenerationOptions
 ): Promise<Record<string, unknown>> {
-  const { deepseekApiKey } = useSettingsStore.getState();
-
-  if (!deepseekApiKey) {
-    throw new Error('DeepSeek API key is missing. Please set it in Settings.');
-  }
-
-  const openai = new OpenAI({
-    baseURL: 'https://api.deepseek.com/v1',
-    apiKey: deepseekApiKey,
-    dangerouslyAllowBrowser: true
-  });
+  const { aiProvider, deepseekApiKey, claudeApiKey } = useSettingsStore.getState();
 
   const { trackName, artist, audioAnalysisSummary, localAnalysis, type, simplify, targetKey } = options;
 
@@ -153,6 +143,28 @@ TRANSPOSE INSTRUCTION: Outline the chords and tabs in the key of ${targetKey}. C
 Artist: ${artist}
 Audio Analysis: ${JSON.stringify(audioAnalysisSummary)}`;
 
+  if (aiProvider === 'claude') {
+    return callClaude(claudeApiKey, systemPrompt, userMessage);
+  }
+  return callDeepSeek(deepseekApiKey, systemPrompt, userMessage);
+}
+
+/** Call DeepSeek via OpenAI-compatible SDK */
+async function callDeepSeek(
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+): Promise<Record<string, unknown>> {
+  if (!apiKey) {
+    throw new Error('DeepSeek API key is missing. Please set it in Settings.');
+  }
+
+  const openai = new OpenAI({
+    baseURL: 'https://api.deepseek.com/v1',
+    apiKey,
+    dangerouslyAllowBrowser: true
+  });
+
   const MAX_RETRIES = 2;
   let lastError: unknown;
 
@@ -175,25 +187,91 @@ Audio Analysis: ${JSON.stringify(audioAnalysisSummary)}`;
       return JSON.parse(content);
     } catch (err) {
       lastError = err;
-      const isRetryable = err instanceof Error && (
-        err.message.includes('fetch') ||
-        err.message.includes('network') ||
-        err.message.includes('429') ||
-        err.message.includes('500') ||
-        err.message.includes('502') ||
-        err.message.includes('503') ||
-        err.message.includes('timeout')
-      );
-
-      if (!isRetryable || attempt === MAX_RETRIES) {
+      if (!isRetryable(err) || attempt === MAX_RETRIES) {
         throw err;
       }
-
-      const delay = 2000 * Math.pow(2, attempt); // 2s, 4s
+      const delay = 2000 * Math.pow(2, attempt);
       console.warn(`[DeepSeek] Attempt ${attempt + 1} failed, retrying in ${delay}ms...`, err);
       await new Promise(r => setTimeout(r, delay));
     }
   }
 
   throw lastError;
+}
+
+/** Call Claude via Anthropic Messages API (direct fetch) */
+async function callClaude(
+  apiKey: string,
+  systemPrompt: string,
+  userMessage: string,
+): Promise<Record<string, unknown>> {
+  if (!apiKey) {
+    throw new Error('Claude API key is missing. Please set it in Settings.');
+  }
+
+  const MAX_RETRIES = 2;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-5-20250929',
+          max_tokens: 8192,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: userMessage }],
+        }),
+      });
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        throw new Error(`Claude API error ${res.status}: ${body}`);
+      }
+
+      const data = await res.json();
+      const textBlock = data.content?.find((b: { type: string }) => b.type === 'text');
+      if (!textBlock?.text) {
+        throw new Error('No text content returned from Claude');
+      }
+
+      // Extract JSON from response (Claude may wrap it in markdown code fences)
+      let jsonStr = textBlock.text.trim();
+      const fenceMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+      if (fenceMatch) {
+        jsonStr = fenceMatch[1].trim();
+      }
+
+      return JSON.parse(jsonStr);
+    } catch (err) {
+      lastError = err;
+      if (!isRetryable(err) || attempt === MAX_RETRIES) {
+        throw err;
+      }
+      const delay = 2000 * Math.pow(2, attempt);
+      console.warn(`[Claude] Attempt ${attempt + 1} failed, retrying in ${delay}ms...`, err);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+
+  throw lastError;
+}
+
+function isRetryable(err: unknown): boolean {
+  return err instanceof Error && (
+    err.message.includes('fetch') ||
+    err.message.includes('network') ||
+    err.message.includes('429') ||
+    err.message.includes('500') ||
+    err.message.includes('502') ||
+    err.message.includes('503') ||
+    err.message.includes('timeout') ||
+    err.message.includes('overloaded')
+  );
 }

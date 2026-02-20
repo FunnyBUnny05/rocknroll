@@ -44,8 +44,8 @@ export async function transcribeSpotifyTrack(
     try {
         const { level } = useSettingsStore.getState();
 
-        const CACHE_VERSION = 'v-sheet-2'; // Bumped for new schema with voicings/uncertainties
-        const cacheKey = `rocknroll-sheet-${CACHE_VERSION}-${trackId}-${mode}-${level}`;
+        const CACHE_VERSION = 'v-sheet-3';
+        const cacheKey = `rocknroll-sheet-${CACHE_VERSION}-${trackId}-${mode}-${level}-${useSettingsStore.getState().aiProvider}`;
         const cached = localStorage.getItem(cacheKey);
 
         if (cached) {
@@ -106,8 +106,9 @@ export async function transcribeSpotifyTrack(
             };
         }
 
-        // 3. Generate via DeepSeek (with local analysis context)
-        console.info('[Pipeline] Step 3: Calling DeepSeek API...', {
+        // 3. Generate via AI (with local analysis context)
+        const { aiProvider } = useSettingsStore.getState();
+        console.info(`[Pipeline] Step 3: Calling ${aiProvider} API...`, {
             hasLocalAnalysis: !!localAnalysis,
             mode,
             level,
@@ -121,7 +122,7 @@ export async function transcribeSpotifyTrack(
             simplify: level === 'Beginner'
         }) as unknown as DeepSeekSheetResult;
 
-        console.info('[Pipeline] Step 3 complete. DeepSeek returned:', {
+        console.info(`[Pipeline] Step 3 complete. ${aiProvider} returned:`, {
             sections: dsResult.sections?.length ?? 0,
             chordsUsed: dsResult.chordsUsed?.length ?? 0,
             hasVoicings: !!dsResult.voicings,

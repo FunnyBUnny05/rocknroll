@@ -1,16 +1,26 @@
 import { useSettingsStore } from '../../store/useSettingsStore';
+import type { AiProvider } from '../../store/useSettingsStore';
 
 export function SettingsModal() {
     const {
+        aiProvider,
         deepseekApiKey,
+        claudeApiKey,
         level,
         isSettingsOpen,
+        setAiProvider,
         setDeepseekApiKey,
+        setClaudeApiKey,
         setLevel,
         setSettingsOpen
     } = useSettingsStore();
 
     if (!isSettingsOpen) return null;
+
+    const providers: { value: AiProvider; label: string }[] = [
+        { value: 'deepseek', label: 'DeepSeek' },
+        { value: 'claude', label: 'Claude' },
+    ];
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -26,22 +36,63 @@ export function SettingsModal() {
                 </div>
 
                 <div className="space-y-4">
+                    {/* AI Provider Toggle */}
                     <div>
                         <label className="mb-1 block text-sm font-medium text-gray-300">
-                            DeepSeek API Key
+                            AI Provider
                         </label>
-                        <input
-                            type="password"
-                            value={deepseekApiKey}
-                            onChange={(e) => setDeepseekApiKey(e.target.value)}
-                            className="w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-white placeholder-gray-500 focus:border-green-500 focus:outline-none"
-                            placeholder="sk-..."
-                        />
+                        <div className="flex rounded-lg border border-gray-700 bg-gray-950 p-1">
+                            {providers.map(p => (
+                                <button
+                                    key={p.value}
+                                    className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${aiProvider === p.value ? 'bg-indigo-600 text-white' : 'text-gray-400 hover:text-white'}`}
+                                    onClick={() => setAiProvider(p.value)}
+                                >
+                                    {p.label}
+                                </button>
+                            ))}
+                        </div>
                         <p className="mt-1 text-xs text-gray-500">
-                            Stored locally in your browser to power the Musical Brain.
+                            Choose which AI model powers the transcription engine.
                         </p>
                     </div>
 
+                    {/* API Key — conditional on provider */}
+                    {aiProvider === 'deepseek' ? (
+                        <div>
+                            <label className="mb-1 block text-sm font-medium text-gray-300">
+                                DeepSeek API Key
+                            </label>
+                            <input
+                                type="password"
+                                value={deepseekApiKey}
+                                onChange={(e) => setDeepseekApiKey(e.target.value)}
+                                className="w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
+                                placeholder="sk-..."
+                            />
+                            <p className="mt-1 text-xs text-gray-500">
+                                Stored locally in your browser. Used with DeepSeek Chat model.
+                            </p>
+                        </div>
+                    ) : (
+                        <div>
+                            <label className="mb-1 block text-sm font-medium text-gray-300">
+                                Claude API Key
+                            </label>
+                            <input
+                                type="password"
+                                value={claudeApiKey}
+                                onChange={(e) => setClaudeApiKey(e.target.value)}
+                                className="w-full rounded-lg border border-gray-700 bg-gray-950 px-3 py-2 text-white placeholder-gray-500 focus:border-indigo-500 focus:outline-none"
+                                placeholder="sk-ant-..."
+                            />
+                            <p className="mt-1 text-xs text-gray-500">
+                                Stored locally in your browser. Used with Claude Sonnet 4.5.
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Difficulty Level */}
                     <div>
                         <label className="mb-1 block text-sm font-medium text-gray-300">
                             Difficulty Level
@@ -61,7 +112,7 @@ export function SettingsModal() {
                             </button>
                         </div>
                         <p className="mt-1 text-xs text-gray-500">
-                            Changes the generated instructions from DeepSeek.
+                            Beginner mode simplifies chords to open shapes.
                         </p>
                     </div>
                 </div>
