@@ -239,7 +239,7 @@ function startPositionPolling(): void {
                 albumArt: track.album.images[0]?.url ?? '',
             });
         }
-    }, 200); // 5 updates/sec for smooth fretboard sync
+    }, 50); // 20 updates/sec for ultra-smooth fretboard and scroller sync
 }
 
 function stopPositionPolling(): void {

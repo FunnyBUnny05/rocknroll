@@ -21,28 +21,28 @@ export async function generateGuitarInstructions(
   const beginnerPrompt = `You are a master transcriber. Using the provided chroma intensity for these timestamps, determine the most likely guitar chord voicing.
 Cross-reference the timbre data to identify if a segment is a 'Strum' (Chords) or a 'Pluck' (Tabs). 
 Anchor your deductions using the provided track key and mode.
-MUST ONLY RETURN OPEN CHORDS (e.g., G, C, D, Em, Am). Replace complex barre chords with the simplest 3-string versions.
+MUST ONLY RETURN OPEN CHORDS (e.g., G, C, D, Em, Am). Ignore lead parts.
 Output valid JSON matching this schema exactly:
 {
   "tuning": "Standard",
   "events": [
-    { "start_ms": 0, "end_ms": 500, "chord_name": "G", "tab_positions": "320003", "technique": "none" }
+    { "time": 1500, "chord": "G", "tab": "320003" }
   ]
 }
-Note: 'tab_positions' must be a 6-character string representing frets from low E to high e, use 'x' for muted strings. Use '-' if a string is not played but not explicitly muted.`;
+Note: 'time' is the exact timestamp in milliseconds. 'tab' must be a 6-character string representing frets from low E to high e, use 'x' for muted strings. Use '-' if a string is not played but not explicitly muted.`;
 
   const normalPrompt = `You are a master transcriber. Using the provided chroma intensity for these timestamps, determine the most likely guitar chord voicing.
 Cross-reference the timbre data to identify if a segment is a 'Strum' (Chords) or a 'Pluck' (Tabs). 
 Anchor your deductions using the provided track key and mode.
-Return the exact voicings from the record. Lead notes should still be mapped within the nearest chord shape where possible, or with single notes represented like x-x-x-x-5-x.
+Provide 100% accurate barre chords and lead guitar tabs. Lead notes should still be mapped within the nearest chord shape where possible, or with single notes represented like x-x-x-x-5-x.
 Output valid JSON matching this schema exactly:
 {
   "tuning": "Standard",
   "events": [
-    { "start_ms": 0, "end_ms": 500, "chord_name": "G", "tab_positions": "320003", "technique": "none" }
+    { "time": 1500, "chord": "G", "tab": "320003" }
   ]
 }
-Note: 'tab_positions' must be a 6-character string representing frets from low E to high e, use 'x' for muted strings. Use '-' if a string is not played but not explicitly muted.`;
+Note: 'time' is the exact timestamp in milliseconds. 'tab' must be a 6-character string representing frets from low E to high e, use 'x' for muted strings. Use '-' if a string is not played but not explicitly muted.`;
 
 
 

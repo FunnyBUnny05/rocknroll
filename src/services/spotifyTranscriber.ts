@@ -299,11 +299,9 @@ export async function transcribeSpotifyTrack(
     let lyricsAligned: { time: number; text: string }[] | undefined = undefined;
 
     interface DeepSeekRawEvent {
-        start_ms: number;
-        end_ms: number;
-        chord_name: string;
-        tab_positions: string;
-        technique: 'slide' | 'bend' | 'none';
+        time: number;
+        chord: string;
+        tab: string;
     }
 
     interface DeepSeekResult {
@@ -386,20 +384,21 @@ export async function transcribeSpotifyTrack(
 
                 const parsedEvents: SongEvent[] = [];
                 for (const raw of (dsResult.events || [])) {
-                    // Anti-Flicker Logic: Drop events shorter than 150ms
-                    if (raw.end_ms - raw.start_ms < 150) continue;
+                    // time is in milliseconds from DeepSeek
+                    const timeSec = raw.time / 1000;
 
-                    const timeSec = raw.start_ms / 1000;
-                    const durSec = (raw.end_ms - raw.start_ms) / 1000;
-                    const parsed = parseTab(raw.tab_positions, durSec);
+                    // Since "duration" is dropped from the simplified schema, we define a default 500ms duration
+                    // Or ideally calculate the gap to the next event later if needed. For now default to 0.5s.
+                    const durSec = 0.5;
+                    const parsed = parseTab(raw.tab, durSec);
 
                     parsedEvents.push({
                         time: timeSec,
                         duration: durSec,
                         type: parsed.notes.length > 2 ? 'chord' : 'tab',
                         chord: {
-                            name: raw.chord_name,
-                            symbol: raw.chord_name,
+                            name: raw.chord,
+                            symbol: raw.chord,
                             placements: parsed.notes.map((n, i) => ({
                                 string: n.string, fret: n.fret, finger: (i < 4 ? i + 1 : 0) as 0 | 1 | 2 | 3 | 4
                             })),
@@ -452,20 +451,18 @@ export async function transcribeSpotifyTrack(
 
             const parsedEvents: SongEvent[] = [];
             for (const raw of (dsResult.events || [])) {
-                // Anti-Flicker Logic: Drop events shorter than 150ms
-                if (raw.end_ms - raw.start_ms < 150) continue;
 
-                const timeSec = raw.start_ms / 1000;
-                const durSec = (raw.end_ms - raw.start_ms) / 1000;
-                const parsed = parseTab(raw.tab_positions, durSec);
+                const timeSec = raw.time / 1000;
+                const durSec = 0.5;
+                const parsed = parseTab(raw.tab, durSec);
 
                 parsedEvents.push({
                     time: timeSec,
                     duration: durSec,
                     type: parsed.notes.length > 2 ? 'chord' : 'tab',
                     chord: {
-                        name: raw.chord_name,
-                        symbol: raw.chord_name,
+                        name: raw.chord,
+                        symbol: raw.chord,
                         placements: parsed.notes.map((n, i) => ({
                             string: n.string, fret: n.fret, finger: (i < 4 ? i + 1 : 0) as 0 | 1 | 2 | 3 | 4
                         })),

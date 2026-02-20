@@ -11,7 +11,10 @@ const SPOTIFY_AUTH_ENDPOINT = 'https://accounts.spotify.com/authorize';
 const SPOTIFY_TOKEN_ENDPOINT = 'https://accounts.spotify.com/api/token';
 
 // Detect redirect URI based on environment
-const REDIRECT_URI = `${window.location.origin}${import.meta.env.BASE_URL}callback`;
+// Force the GitHub Pages URL in production so that the callback matches the registered Spotify Dashboard exactly.
+const REDIRECT_URI = import.meta.env.MODE === 'production'
+    ? 'https://funnybunny05.github.io/rocknroll/callback'
+    : `${window.location.origin}${import.meta.env.BASE_URL}callback`;
 
 const SCOPES = [
     'streaming',

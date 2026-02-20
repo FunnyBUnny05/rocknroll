@@ -35,7 +35,7 @@ function App() {
   const { setSettingsOpen } = useSettingsStore();
 
   const isTranscribingRef = useRef(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [loadingState, setLoadingState] = useState<'idle' | 'transcribing' | 'syncing'>('idle');
   const lastTranscribedTrackRef = useRef<string | null>(null);
 
   // Check if already authenticated on mount
@@ -73,7 +73,7 @@ function App() {
   const handleTranscribe = useCallback(async (track: typeof currentTrack) => {
     if (!track || isTranscribingRef.current || lastTranscribedTrackRef.current === track.id) return;
     isTranscribingRef.current = true;
-    setIsTranscribing(true);
+    setLoadingState('transcribing');
     lastTranscribedTrackRef.current = track.id;
 
     try {
@@ -84,13 +84,16 @@ function App() {
         track.duration_ms,
         track.uri,
       );
+      setLoadingState('syncing');
+      // small artificial delay so the user sees the 'syncing' UI
+      await new Promise(res => setTimeout(res, 800));
       loadSong(transcribedSong);
     } catch (err) {
       console.error('Transcription failed:', err);
       setSpotifyError('Failed to generate tabs for this track');
     } finally {
       isTranscribingRef.current = false;
-      setIsTranscribing(false);
+      setLoadingState('idle');
     }
   }, [loadSong, setSpotifyError]);
 
@@ -158,23 +161,27 @@ function App() {
               {/* Now Playing */}
               {isSpotifyAuth && currentTrack && (
                 <section>
-                  <ErrorBoundary label="Now Playing">
+                  <ErrorBoundary label="Spotify Web Playback SDK Connection">
                     <SpotifyNowPlaying />
                   </ErrorBoundary>
                 </section>
               )}
 
               {/* Loading State */}
-              {isTranscribing && (
+              {loadingState !== 'idle' && (
                 <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-green-800/30 bg-green-900/10 mb-6">
                   <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-green-500 border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
-                  <h3 className="text-lg font-bold text-green-400">Transcribing with DeepSeek AI...</h3>
-                  <p className="mt-2 text-sm text-gray-400">Analyzing segment chroma and timbre data</p>
+                  <h3 className="text-lg font-bold text-green-400">
+                    {loadingState === 'transcribing' ? 'AI is Transcribing...' : 'Syncing with Spotify...'}
+                  </h3>
+                  <p className="mt-2 text-sm text-gray-400">
+                    {loadingState === 'transcribing' ? 'Analyzing segment chroma and timbre data' : 'Aligning generated tabs with the audio playback'}
+                  </p>
                 </div>
               )}
 
               {/* Fretboard + Sheet */}
-              {!isTranscribing && song && (
+              {loadingState === 'idle' && song && (
                 <>
                   <section>
                     <h2 className="mb-3 text-sm font-medium text-gray-500">Fretboard</h2>
