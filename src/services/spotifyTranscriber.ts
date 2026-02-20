@@ -340,7 +340,7 @@ export async function transcribeSpotifyTrack(
         if (cached) {
             try {
                 return JSON.parse(cached);
-            } catch (e) {
+            } catch {
                 // Ignore invalid cache
             }
         }
@@ -543,7 +543,7 @@ export async function transcribeSpotifyTrack(
         const CACHE_VERSION = 'v2';
         const cacheKey = `rocknroll-transcription-${CACHE_VERSION}-${trackId}-${level}`;
         localStorage.setItem(cacheKey, JSON.stringify(finalSong));
-    } catch (e) {
+    } catch {
         // ignore storage full errors
     }
 
