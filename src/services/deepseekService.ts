@@ -153,19 +153,47 @@ TRANSPOSE INSTRUCTION: Outline the chords and tabs in the key of ${targetKey}. C
 Artist: ${artist}
 Audio Analysis: ${JSON.stringify(audioAnalysisSummary)}`;
 
-  const response = await openai.chat.completions.create({
-    model: 'deepseek-chat',
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userMessage }
-    ],
-    response_format: { type: 'json_object' }
-  });
+  const MAX_RETRIES = 2;
+  let lastError: unknown;
 
-  const content = response.choices[0].message.content;
-  if (!content) {
-    throw new Error('No content returned from DeepSeek');
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'deepseek-chat',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userMessage }
+        ],
+        response_format: { type: 'json_object' }
+      });
+
+      const content = response.choices[0].message.content;
+      if (!content) {
+        throw new Error('No content returned from DeepSeek');
+      }
+
+      return JSON.parse(content);
+    } catch (err) {
+      lastError = err;
+      const isRetryable = err instanceof Error && (
+        err.message.includes('fetch') ||
+        err.message.includes('network') ||
+        err.message.includes('429') ||
+        err.message.includes('500') ||
+        err.message.includes('502') ||
+        err.message.includes('503') ||
+        err.message.includes('timeout')
+      );
+
+      if (!isRetryable || attempt === MAX_RETRIES) {
+        throw err;
+      }
+
+      const delay = 2000 * Math.pow(2, attempt); // 2s, 4s
+      console.warn(`[DeepSeek] Attempt ${attempt + 1} failed, retrying in ${delay}ms...`, err);
+      await new Promise(r => setTimeout(r, delay));
+    }
   }
 
-  return JSON.parse(content);
+  throw lastError;
 }

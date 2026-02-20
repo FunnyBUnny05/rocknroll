@@ -57,10 +57,18 @@ export async function transcribeSpotifyTrack(
         }
 
         // 1. Fetch Spotify Audio Analysis & Features
+        console.info('[Pipeline] Step 1: Fetching Spotify audio data...');
         const [analysis, features] = await Promise.allSettled([
             getAudioAnalysis(trackId),
             getAudioFeatures(trackId),
         ]);
+
+        if (analysis.status === 'rejected') {
+            console.warn('[Pipeline] Spotify audio-analysis failed:', analysis.reason);
+        }
+        if (features.status === 'rejected') {
+            console.warn('[Pipeline] Spotify audio-features failed:', features.reason);
+        }
 
         let summary: Record<string, unknown> = {
             instructions: "Spotify audio analysis was unavailable. Please provide the exact layout of this song."
@@ -73,6 +81,7 @@ export async function transcribeSpotifyTrack(
             const featuresData = features.status === 'fulfilled' ? features.value : undefined;
 
             // 2. Run local harmonic analysis engine
+            console.info(`[Pipeline] Step 2: Running local analysis (${data.segments.length} segments)...`);
             localAnalysis = analyzeAudio(data, featuresData);
 
             bpm = localAnalysis.tempo;
@@ -98,6 +107,11 @@ export async function transcribeSpotifyTrack(
         }
 
         // 3. Generate via DeepSeek (with local analysis context)
+        console.info('[Pipeline] Step 3: Calling DeepSeek API...', {
+            hasLocalAnalysis: !!localAnalysis,
+            mode,
+            level,
+        });
         const dsResult = await generateGuitarInstructions({
             trackName,
             artist: artistName,
@@ -106,6 +120,13 @@ export async function transcribeSpotifyTrack(
             type: mode,
             simplify: level === 'Beginner'
         }) as unknown as DeepSeekSheetResult;
+
+        console.info('[Pipeline] Step 3 complete. DeepSeek returned:', {
+            sections: dsResult.sections?.length ?? 0,
+            chordsUsed: dsResult.chordsUsed?.length ?? 0,
+            hasVoicings: !!dsResult.voicings,
+            originalKey: dsResult.originalKey,
+        });
 
         // 4. Merge chord lists (union of local + AI detected)
         const allChords = mergeChordLists(

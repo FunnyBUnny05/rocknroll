@@ -60,7 +60,8 @@ function App() {
       loadSong(transcribedSong);
     } catch (err) {
       console.error('Transcription failed:', err);
-      setSpotifyError('Failed to generate sheet for this track');
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      setSpotifyError(`Failed to generate sheet: ${message}`);
     } finally {
       isTranscribingRef.current = false;
       setLoadingState('idle');
