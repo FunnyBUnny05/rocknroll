@@ -25,9 +25,6 @@ export interface SpotifyState {
 
     // Current track
     currentTrack: SpotifyTrack | null;
-    isSpotifyPlaying: boolean;
-    positionMs: number;
-    durationMs: number;
     trackName: string;
     artistName: string;
     albumArt: string;
@@ -44,10 +41,7 @@ export interface SpotifyState {
     setSearchResults: (results: SpotifyTrack[]) => void;
     setSearching: (searching: boolean) => void;
     setCurrentTrack: (track: SpotifyTrack | null) => void;
-    updatePlaybackState: (state: {
-        isPlaying: boolean;
-        positionMs: number;
-        durationMs: number;
+    setTrackDetails: (details: {
         trackName: string;
         artistName: string;
         albumArt: string;
@@ -66,9 +60,6 @@ const initialState = {
     searchResults: [],
     isSearching: false,
     currentTrack: null,
-    isSpotifyPlaying: false,
-    positionMs: 0,
-    durationMs: 0,
     trackName: '',
     artistName: '',
     albumArt: '',
@@ -90,14 +81,11 @@ export const useSpotifyStore = create<SpotifyState>((set) => ({
     setSearchResults: (searchResults) => set({ searchResults }),
     setSearching: (isSearching) => set({ isSearching }),
     setCurrentTrack: (currentTrack) => set({ currentTrack }),
-    updatePlaybackState: (state) =>
+    setTrackDetails: (details) =>
         set({
-            isSpotifyPlaying: state.isPlaying,
-            positionMs: state.positionMs,
-            durationMs: state.durationMs,
-            trackName: state.trackName,
-            artistName: state.artistName,
-            albumArt: state.albumArt,
+            trackName: details.trackName,
+            artistName: details.artistName,
+            albumArt: details.albumArt,
         }),
     setError: (error) => set({ error }),
     reset: () => set(initialState),

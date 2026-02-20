@@ -1,12 +1,19 @@
 import OpenAI from 'openai';
 import { useSettingsStore } from '../store/useSettingsStore';
 
+interface GenerationOptions {
+  trackName: string;
+  artist: string;
+  audioAnalysisSummary: Record<string, unknown>;
+  type: 'chord' | 'tab';
+  simplify: boolean;
+  targetKey?: string;
+}
+
 export async function generateGuitarInstructions(
-  trackName: string,
-  artist: string,
-  audioAnalysisSummary: Record<string, unknown>
+  options: GenerationOptions
 ): Promise<Record<string, unknown>> {
-  const { deepseekApiKey, level } = useSettingsStore.getState();
+  const { deepseekApiKey } = useSettingsStore.getState();
 
   if (!deepseekApiKey) {
     throw new Error('DeepSeek API key is missing. Please set it in Settings.');
@@ -18,37 +25,69 @@ export async function generateGuitarInstructions(
     dangerouslyAllowBrowser: true
   });
 
-  const beginnerPrompt = `You are a master transcriber. Using the provided chroma intensity for these timestamps, determine the most likely guitar chord voicing.
-Cross-reference the timbre data to identify if a segment is a 'Strum' (Chords) or a 'Pluck' (Tabs). 
-Anchor your deductions using the provided track key and mode.
-MUST ONLY RETURN OPEN CHORDS (e.g., G, C, D, Em, Am). Ignore lead parts.
+  const { trackName, artist, audioAnalysisSummary, type, simplify, targetKey } = options;
+
+  let systemPrompt = `You are a master guitar transcriber. Your task is to transcribe the song '${trackName}' by '${artist}'.
+I am providing you with the Spotify Audio Analysis data (chroma intensity, timbre, key, mode). Use this to deduce the chords and structure.
+
+You must output a static, printable Guitar Sheet document in JSON format.
 Output valid JSON matching this schema exactly:
 {
-  "tuning": "Standard",
-  "events": [
-    { "time": 1500, "chord": "G", "tab": "320003" }
+  "title": "${trackName}",
+  "artist": "${artist}",
+  "originalKey": "G",
+  "bpm": 120,
+  "type": "${type}",
+  "chordsUsed": ["G", "C", "D", "Em"],
+  "sections": [
+    {
+      "name": "Intro",
+      "content": "..."
+    },
+    {
+      "name": "Verse 1",
+      "content": "..."
+    }
   ]
-}
-Note: 'time' is the exact timestamp in milliseconds. 'tab' must be a 6-character string representing frets from low E to high e, use 'x' for muted strings. Use '-' if a string is not played but not explicitly muted.`;
+}`;
 
-  const normalPrompt = `You are a master transcriber. Using the provided chroma intensity for these timestamps, determine the most likely guitar chord voicing.
-Cross-reference the timbre data to identify if a segment is a 'Strum' (Chords) or a 'Pluck' (Tabs). 
-Anchor your deductions using the provided track key and mode.
-Provide 100% accurate barre chords and lead guitar tabs. Lead notes should still be mapped within the nearest chord shape where possible, or with single notes represented like x-x-x-x-5-x.
-Output valid JSON matching this schema exactly:
-{
-  "tuning": "Standard",
-  "events": [
-    { "time": 1500, "chord": "G", "tab": "320003" }
-  ]
-}
-Note: 'time' is the exact timestamp in milliseconds. 'tab' must be a 6-character string representing frets from low E to high e, use 'x' for muted strings. Use '-' if a string is not played but not explicitly muted.`;
+  if (type === 'chord') {
+    systemPrompt += `
 
+INSTRUCTIONS FOR CHORD SHEET ('content' field):
+- Provide the lyrics for the section with the chords embedded in brackets right before the word where the change happens, exactly like this: [G] Welcome to the [D] hotel [Em] California.
+- Make it highly legible for a vocalist/guitarist to read and play along.
+- If a section contains no lyrics (like an Intro or Solo), just write the chord sequence like: [G]  [D]  [Em]  [C]
+`;
+  } else {
+    systemPrompt += `
 
+INSTRUCTIONS FOR TAB SHEET ('content' field):
+- Provide a classic 6-line ASCII guitar tab for the section.
+- Indicate strings (e B G D A E) on the left side.
+- Space the notes out cleanly so it is easy to read.
+- Capture the iconic riffs, solos, or fingerpicking patterns accurately.
+- Do NOT provide lyrics for the Tab Sheet.
+`;
+  }
 
-  const systemPrompt = level === 'Beginner' ? beginnerPrompt : normalPrompt;
+  if (simplify) {
+    systemPrompt += `
+CRITICAL INSTRUCTION: The user has requested to SIMPLIFY this song for beginners.
+- You MUST substitute all complex, diminished, 7th, 9th, or bare chords with the easiest open chords possible (e.g., replace Bm with a simple Bm7 or transpose shapes).
+- Do your best to rely only on C, A, G, E, D, Am, Dm, Em.
+`;
+  }
 
-  const userMessage = `Track: ${trackName}\nArtist: ${artist}\nAudio Analysis: ${JSON.stringify(audioAnalysisSummary)}`;
+  if (targetKey) {
+    systemPrompt += `
+TRANSPOSE INSTRUCTION: Outline the chords and tabs in the key of ${targetKey}. Calculate the transpositions accurately from the original key.
+`;
+  }
+
+  const userMessage = `Track: ${trackName}
+Artist: ${artist}
+Audio Analysis: ${JSON.stringify(audioAnalysisSummary)}`;
 
   const response = await openai.chat.completions.create({
     model: 'deepseek-chat',

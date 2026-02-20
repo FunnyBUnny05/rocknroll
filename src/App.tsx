@@ -1,5 +1,4 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
-import { FretboardPanel } from './components/fretboard/FretboardPanel';
 import { SpotifyLoginButton } from './components/spotify/SpotifyLoginButton';
 import { SpotifySearch } from './components/spotify/SpotifySearch';
 import { SpotifyNowPlaying } from './components/spotify/SpotifyNowPlaying';
@@ -8,34 +7,27 @@ import { useAppStore } from './store/useAppStore';
 import { useSpotifyStore } from './store/useSpotifyStore';
 import { isAuthenticated as checkAuth, getAccessToken } from './services/SpotifyAuth';
 import { getCurrentUser } from './services/SpotifyService';
-import {
-  initializePlayer,
-  onPlayerStateChange,
-  onDeviceReady,
-  onPlayerError,
-} from './services/SpotifyPlayer';
 import { transcribeSpotifyTrack } from './services/spotifyTranscriber';
 import { SettingsModal } from './components/ui/SettingsModal';
 import { useSettingsStore } from './store/useSettingsStore';
+import { SheetView } from './components/ui/SheetView';
+import { SheetControls } from './components/ui/SheetControls';
 
 function App() {
-  const { song, loadSong, tick } = useAppStore();
+  const { song, loadSong, viewMode } = useAppStore();
   const {
     isAuthenticated: isSpotifyAuth,
     currentTrack,
     error: spotifyError,
     setAuthenticated,
     setUser,
-    setDeviceId,
-    setPlayerReady,
-    updatePlaybackState,
     setError: setSpotifyError,
   } = useSpotifyStore();
 
   const { setSettingsOpen } = useSettingsStore();
 
   const isTranscribingRef = useRef(false);
-  const [loadingState, setLoadingState] = useState<'idle' | 'transcribing' | 'syncing'>('idle');
+  const [loadingState, setLoadingState] = useState<'idle' | 'generating'>('idle');
   const lastTranscribedTrackRef = useRef<string | null>(null);
 
   // Check if already authenticated on mount
@@ -48,49 +40,27 @@ function App() {
     }
   }, [setAuthenticated, setUser]);
 
-  // Initialize Spotify player when authenticated
-  useEffect(() => {
-    if (!isSpotifyAuth) return;
-
-    initializePlayer().catch(console.error);
-
-    onDeviceReady((deviceId) => {
-      setDeviceId(deviceId);
-      setPlayerReady(true);
-    });
-
-    onPlayerStateChange((state) => {
-      updatePlaybackState(state);
-      tick(state.positionMs / 1000);
-    });
-
-    onPlayerError((message) => {
-      setSpotifyError(message);
-    });
-  }, [isSpotifyAuth, setDeviceId, setPlayerReady, updatePlaybackState, setSpotifyError, tick]);
-
-  // Transcribe track on selection
-  const handleTranscribe = useCallback(async (track: typeof currentTrack) => {
-    if (!track || isTranscribingRef.current || lastTranscribedTrackRef.current === track.id) return;
+  // Transcribe track on selection or when viewMode changes
+  const handleTranscribe = useCallback(async (track: typeof currentTrack, mode: typeof viewMode) => {
+    // We only skip if the exact track AND mode are already transcribed
+    const isSameTrackAndMode = lastTranscribedTrackRef.current === `${track?.id}-${mode}`;
+    if (!track || isTranscribingRef.current || isSameTrackAndMode) return;
     isTranscribingRef.current = true;
-    setLoadingState('transcribing');
-    lastTranscribedTrackRef.current = track.id;
+    setLoadingState('generating');
+    lastTranscribedTrackRef.current = `${track.id}-${mode}`;
 
     try {
       const transcribedSong = await transcribeSpotifyTrack(
         track.id,
         track.name,
         track.artists.map((a) => a.name).join(', '),
-        track.duration_ms,
         track.uri,
+        mode
       );
-      setLoadingState('syncing');
-      // small artificial delay so the user sees the 'syncing' UI
-      await new Promise(res => setTimeout(res, 800));
       loadSong(transcribedSong);
     } catch (err) {
       console.error('Transcription failed:', err);
-      setSpotifyError('Failed to generate tabs for this track');
+      setSpotifyError('Failed to generate sheet for this track');
     } finally {
       isTranscribingRef.current = false;
       setLoadingState('idle');
@@ -98,131 +68,127 @@ function App() {
   }, [loadSong, setSpotifyError]);
 
   useEffect(() => {
-    handleTranscribe(currentTrack);
-  }, [currentTrack, handleTranscribe]);
+    handleTranscribe(currentTrack, viewMode);
+  }, [currentTrack, viewMode, handleTranscribe]);
 
   return (
     <>
       <SettingsModal />
       <ErrorBoundary label="App">
-        <div className="min-h-screen bg-gray-950 text-gray-200">
-          {/* Header */}
-          <header className="border-b border-gray-800/50 px-6 py-4">
-            <div className="mx-auto flex max-w-5xl items-center justify-between">
+        <div className="flex min-h-screen bg-gray-900 text-gray-200">
+
+          {/* LEFT SIDEBAR (Controls & Search) */}
+          <aside className="w-[340px] flex-shrink-0 border-r border-gray-800 bg-gray-950 flex flex-col h-screen overflow-y-auto">
+            {/* Header */}
+            <div className="p-6 border-b border-gray-800/50 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-green-600 text-sm font-bold text-white">
-                  GT
+                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-500/20">
+                  GS
                 </div>
                 <div>
-                  <h1 className="text-lg font-bold text-white">Guitar Tabs</h1>
-                  <p className="text-xs text-gray-500">Spotify to Tabs & Chords</p>
+                  <h1 className="text-lg font-bold text-white tracking-tight">Guitar Sheet</h1>
+                  <p className="text-xs text-gray-500 font-medium tracking-wide uppercase">AI Generator</p>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={() => setSettingsOpen(true)}
-                  className="text-gray-400 hover:text-white transition-colors p-2 rounded-full hover:bg-gray-800"
-                  title="Settings"
-                  aria-label="Settings"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                </button>
-                <SpotifyLoginButton />
-              </div>
+              <button
+                onClick={() => setSettingsOpen(true)}
+                className="text-gray-400 hover:text-white transition-colors p-2 rounded-full hover:bg-gray-800"
+                title="Settings"
+                aria-label="Settings"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </button>
             </div>
-          </header>
 
-          {/* Main content */}
-          <main className="mx-auto max-w-5xl px-6 py-8">
-            <div className="space-y-6">
-              {/* Error banner */}
-              {spotifyError && (
-                <div className="spotify-error">
-                  <span>{spotifyError}</span>
-                  <button className="spotify-error-dismiss" onClick={() => setSpotifyError(null)}>
-                    X
-                  </button>
-                </div>
-              )}
-
-              {/* Spotify Search */}
-              {isSpotifyAuth && (
-                <section>
-                  <h2 className="mb-3 text-sm font-medium text-gray-500">Search a Song</h2>
-                  <ErrorBoundary label="Search">
-                    <SpotifySearch />
-                  </ErrorBoundary>
-                </section>
-              )}
-
-              {/* Now Playing */}
-              {isSpotifyAuth && currentTrack && (
-                <section>
-                  <ErrorBoundary label="Spotify Web Playback SDK Connection">
-                    <SpotifyNowPlaying />
-                  </ErrorBoundary>
-                </section>
-              )}
-
-              {/* Loading State */}
-              {loadingState !== 'idle' && (
-                <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-green-800/30 bg-green-900/10 mb-6">
-                  <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-green-500 border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
-                  <h3 className="text-lg font-bold text-green-400">
-                    {loadingState === 'transcribing' ? 'AI is Transcribing...' : 'Syncing with Spotify...'}
-                  </h3>
-                  <p className="mt-2 text-sm text-gray-400">
-                    {loadingState === 'transcribing' ? 'Analyzing segment chroma and timbre data' : 'Aligning generated tabs with the audio playback'}
-                  </p>
-                </div>
-              )}
-
-              {/* Fretboard + Sheet */}
-              {loadingState === 'idle' && song && (
-                <>
-                  <section>
-                    <h2 className="mb-3 text-sm font-medium text-gray-500">Fretboard</h2>
-                    <FretboardPanel />
-                  </section>
-
-                  {/* Info panel */}
-                  <section className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    <InfoCard label="Tuning" value={song.tuning.join(' ')} />
-                    <InfoCard label="BPM" value={String(song.bpm)} />
-                    <InfoCard label="Confidence" value={`${(song.metadata.confidence * 100).toFixed(0)}%`} />
-                    <InfoCard label="Engine" value={song.metadata.transcriptionEngine} />
-                  </section>
-                </>
-              )}
-
-              {/* Login prompt when not authenticated */}
-              {!isSpotifyAuth && (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <h2 className="text-xl font-bold text-white mb-2">Spotify Guitar Tabs</h2>
-                  <p className="text-gray-400 mb-6 max-w-md">
-                    Connect your Spotify account to search any song and instantly generate
-                    guitar tabs and chord sheets.
+            {/* Sidebar Content */}
+            <div className="flex-1 p-6 space-y-6">
+              {!isSpotifyAuth ? (
+                <div className="text-center bg-gray-900/50 p-6 rounded-xl border border-gray-800">
+                  <h2 className="text-sm font-bold text-white mb-2">Connect Spotify</h2>
+                  <p className="text-xs text-gray-400 mb-4">
+                    Search millions of songs and instantly transform them into printable chord and tab sheets.
                   </p>
                   <SpotifyLoginButton />
                 </div>
+              ) : (
+                <>
+                  <section>
+                    <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">Search Song</h2>
+                    <ErrorBoundary label="Search">
+                      <SpotifySearch />
+                    </ErrorBoundary>
+                  </section>
+
+                  {currentTrack && (
+                    <section>
+                      <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-500">Selected</h2>
+                      <ErrorBoundary label="Selected Track Info">
+                        <SpotifyNowPlaying />
+                      </ErrorBoundary>
+                    </section>
+                  )}
+                </>
+              )}
+
+              {spotifyError && (
+                <div className="bg-red-900/20 border border-red-800/50 rounded-lg p-3 relative text-sm text-red-400">
+                  <span>{spotifyError}</span>
+                  <button className="absolute top-1 right-2 text-red-500 hover:text-red-300" onClick={() => setSpotifyError(null)}>
+                    ×
+                  </button>
+                </div>
               )}
             </div>
+          </aside>
+
+          {/* RIGHT MAIN AREA (Sheet Viewer) */}
+          <main className="flex-1 flex flex-col h-screen overflow-hidden bg-[#eef0f4] relative">
+
+            {/* Context/Toolbar Header */}
+            <div className="h-16 bg-white border-b border-gray-200 flex items-center px-8 shadow-sm justify-between z-10 shrink-0">
+              {song && <SheetControls />}
+              {!song && <div className="text-gray-400 text-sm font-medium">No sheet generated yet.</div>}
+            </div>
+
+            {/* Canvas Area (Scrollable) */}
+            <div className="flex-1 overflow-y-auto w-full p-8 md:p-12 pb-32 flex justify-center content-start">
+
+              {loadingState === 'generating' && (
+                <div className="m-auto flex flex-col items-center justify-center p-12 bg-white rounded-2xl shadow-xl border border-gray-100 max-w-sm w-full animate-in fade-in duration-500 zoom-in-95">
+                  <div className="mb-6 relative">
+                    <div className="absolute inset-0 bg-indigo-500 blur-xl opacity-20 rounded-full animate-pulse"></div>
+                    <div className="relative h-12 w-12 rounded-full border-4 border-solid border-indigo-100 border-t-indigo-600 animate-spin"></div>
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 mb-1">Writing Sheet Music</h3>
+                  <p className="text-sm text-gray-500 text-center">
+                    DeepSeek AI is analyzing the audio structure and arranging the chords...
+                  </p>
+                </div>
+              )}
+
+              {loadingState === 'idle' && !song && (
+                <div className="m-auto text-center max-w-md">
+                  <div className="w-20 h-20 bg-white shadow-md rounded-2xl mx-auto mb-6 flex items-center justify-center -rotate-3 border border-gray-200">
+                    <svg className="w-10 h-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
+                  </div>
+                  <h2 className="text-2xl font-bold text-gray-800 mb-2">Ready to Transcribe</h2>
+                  <p className="text-gray-500">Pick a song from the sidebar to automatically generate a beautiful, printable sheet.</p>
+                </div>
+              )}
+
+              {loadingState === 'idle' && song && (
+                <SheetView />
+              )}
+            </div>
+
           </main>
+
         </div>
       </ErrorBoundary>
     </>
-  );
-}
-
-function InfoCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-gray-800 bg-gray-900/40 p-3 text-center">
-      <div className="text-xs text-gray-500">{label}</div>
-      <div className="mt-1 truncate text-sm font-medium text-white">{value}</div>
-    </div>
   );
 }
 

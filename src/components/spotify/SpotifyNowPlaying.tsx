@@ -1,18 +1,12 @@
 /**
- * SpotifyNowPlaying - Shows currently playing track info with playback controls
+ * SpotifyNowPlaying - Shows currently selected track info
  */
 
 import { useSpotifyStore } from '../../store/useSpotifyStore';
-import { formatDuration } from '../../services/SpotifyService';
-import * as SpotifyPlayer from '../../services/SpotifyPlayer';
-import './Spotify.css';
 
 export function SpotifyNowPlaying() {
     const {
         currentTrack,
-        isSpotifyPlaying,
-        positionMs,
-        durationMs,
         trackName,
         artistName,
         albumArt,
@@ -20,53 +14,18 @@ export function SpotifyNowPlaying() {
 
     if (!currentTrack) return null;
 
-    const progressPercent = durationMs > 0 ? (positionMs / durationMs) * 100 : 0;
-
-    const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-        const rect = e.currentTarget.getBoundingClientRect();
-        const fraction = (e.clientX - rect.left) / rect.width;
-        const seekMs = fraction * durationMs;
-        SpotifyPlayer.seek(seekMs);
-    };
-
     return (
-        <div className="spotify-now-playing">
-            {albumArt && (
-                <img src={albumArt} alt={trackName} className="spotify-np-art" />
-            )}
-            <div className="spotify-np-info">
-                <span className="spotify-np-track">{trackName}</span>
-                <span className="spotify-np-artist">{artistName}</span>
-            </div>
-
-            <div className="spotify-np-controls">
-                <button
-                    className="spotify-np-play-btn"
-                    onClick={() =>
-                        isSpotifyPlaying ? SpotifyPlayer.pause() : SpotifyPlayer.resume()
-                    }
-                >
-                    {isSpotifyPlaying ? (
-                        <svg viewBox="0 0 24 24" width="24" height="24">
-                            <path fill="currentColor" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
-                        </svg>
-                    ) : (
-                        <svg viewBox="0 0 24 24" width="24" height="24">
-                            <path fill="currentColor" d="M8 5v14l11-7z" />
-                        </svg>
-                    )}
-                </button>
-            </div>
-
-            <div className="spotify-np-progress-wrapper">
-                <span className="spotify-np-time">{formatDuration(positionMs)}</span>
-                <div className="spotify-np-progress-bar" onClick={handleSeek}>
-                    <div
-                        className="spotify-np-progress-fill"
-                        style={{ width: `${progressPercent}%` }}
-                    />
+        <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-800 flex items-center gap-4">
+            {albumArt ? (
+                <img src={albumArt} alt={trackName} className="w-14 h-14 rounded-md shadow-md object-cover" />
+            ) : (
+                <div className="w-14 h-14 rounded-md bg-gray-800 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"></path></svg>
                 </div>
-                <span className="spotify-np-time">{formatDuration(durationMs)}</span>
+            )}
+            <div className="flex flex-col overflow-hidden">
+                <span className="text-sm font-bold text-white truncate">{trackName}</span>
+                <span className="text-xs text-gray-400 truncate">{artistName}</span>
             </div>
         </div>
     );
