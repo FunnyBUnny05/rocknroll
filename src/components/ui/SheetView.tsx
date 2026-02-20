@@ -32,6 +32,10 @@ export function SheetView() {
         );
     };
 
+    const timeSigStr = song.timeSignature
+        ? `${song.timeSignature[0]}/${song.timeSignature[1]}`
+        : '4/4';
+
     return (
         <div className="w-full max-w-[850px] bg-white shadow-2xl rounded-sm min-h-[1100px] p-12 lg:p-16 border border-gray-200 printable-sheet flex flex-col relative" id="sheet-container">
 
@@ -45,11 +49,20 @@ export function SheetView() {
                         <div>Key: <span className="text-gray-900 ml-1">{song.metadata.originalKey}</span></div>
                         <div className="w-px h-4 bg-gray-300 self-center"></div>
                         <div>BPM: <span className="text-gray-900 ml-1">{song.bpm}</span></div>
+                        <div className="w-px h-4 bg-gray-300 self-center"></div>
+                        <div>Time: <span className="text-gray-900 ml-1">{timeSigStr}</span></div>
                     </div>
                 </div>
+
+                {/* Scale display */}
+                {song.metadata.scale && song.metadata.scale.length > 0 && (
+                    <div className="mt-3 text-sm text-gray-500">
+                        Scale: <span className="text-gray-700 font-medium">{song.metadata.scale.join(' - ')}</span>
+                    </div>
+                )}
             </header>
 
-            {/* Chord Used Section */}
+            {/* Chords Used + Voicings Section */}
             {song.chordsUsed && song.chordsUsed.length > 0 && (
                 <div className="mb-10 bg-gray-50/50 p-6 rounded-xl border border-gray-100">
                     <h3 className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-4 flex items-center gap-2">
@@ -58,8 +71,11 @@ export function SheetView() {
                     </h3>
                     <div className="flex gap-4 flex-wrap">
                         {song.chordsUsed.map(chord => (
-                            <div key={chord} className="min-w-16 px-4 h-16 bg-white border border-gray-200 rounded-lg shadow-sm flex items-center justify-center font-bold text-gray-800 text-lg hover:border-indigo-300 transition-colors">
-                                {chord}
+                            <div key={chord} className="min-w-20 px-4 py-3 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col items-center justify-center hover:border-indigo-300 transition-colors">
+                                <span className="font-bold text-gray-800 text-lg">{chord}</span>
+                                {song.voicings[chord] && (
+                                    <span className="text-xs text-gray-400 font-mono mt-1">{song.voicings[chord]}</span>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -80,9 +96,40 @@ export function SheetView() {
                 ))}
             </div>
 
+            {/* Uncertainties Section */}
+            {song.uncertainties && song.uncertainties.length > 0 && (
+                <div className="mt-10 p-5 bg-amber-50/50 rounded-xl border border-amber-200/60">
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.962-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                        Transcription Uncertainties
+                    </h3>
+                    <ul className="space-y-2 text-sm text-amber-800">
+                        {song.uncertainties.slice(0, 10).map((u, i) => (
+                            <li key={i} className="flex items-start gap-2">
+                                <span className="text-amber-400 mt-0.5 shrink-0">-</span>
+                                <div>
+                                    <span className="font-medium">{u.location}:</span>{' '}
+                                    <span className="text-amber-700">{u.message}</span>
+                                    {u.candidates.length > 0 && (
+                                        <span className="text-amber-500 ml-1">
+                                            [{u.candidates.join(' / ')}]
+                                        </span>
+                                    )}
+                                </div>
+                            </li>
+                        ))}
+                        {song.uncertainties.length > 10 && (
+                            <li className="text-amber-500 italic pl-5">
+                                ...and {song.uncertainties.length - 10} more
+                            </li>
+                        )}
+                    </ul>
+                </div>
+            )}
+
             {/* Footer stamp */}
             <div className="mt-16 pt-8 border-t border-gray-100 text-center text-xs text-gray-400 font-medium">
-                Generated by DeepSeek AI Guitar Sheet Generator • {new Date(song.metadata.transcribedAt).toLocaleDateString()}
+                Generated by Audio Analysis Engine + DeepSeek AI • Confidence: {Math.round(song.metadata.confidence * 100)}% • {new Date(song.metadata.transcribedAt).toLocaleDateString()}
             </div>
         </div>
     );
