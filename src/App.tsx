@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { FretboardPanel } from './components/fretboard/FretboardPanel';
 import { SpotifyLoginButton } from './components/spotify/SpotifyLoginButton';
 import { SpotifySearch } from './components/spotify/SpotifySearch';
@@ -35,6 +35,7 @@ function App() {
   const { setSettingsOpen } = useSettingsStore();
 
   const isTranscribingRef = useRef(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   const lastTranscribedTrackRef = useRef<string | null>(null);
 
   // Check if already authenticated on mount
@@ -72,6 +73,7 @@ function App() {
   const handleTranscribe = useCallback(async (track: typeof currentTrack) => {
     if (!track || isTranscribingRef.current || lastTranscribedTrackRef.current === track.id) return;
     isTranscribingRef.current = true;
+    setIsTranscribing(true);
     lastTranscribedTrackRef.current = track.id;
 
     try {
@@ -88,6 +90,7 @@ function App() {
       setSpotifyError('Failed to generate tabs for this track');
     } finally {
       isTranscribingRef.current = false;
+      setIsTranscribing(false);
     }
   }, [loadSong, setSpotifyError]);
 
@@ -161,8 +164,17 @@ function App() {
                 </section>
               )}
 
+              {/* Loading State */}
+              {isTranscribing && (
+                <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-green-800/30 bg-green-900/10 mb-6">
+                  <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-green-500 border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]" />
+                  <h3 className="text-lg font-bold text-green-400">Transcribing with DeepSeek AI...</h3>
+                  <p className="mt-2 text-sm text-gray-400">Analyzing segment chroma and timbre data</p>
+                </div>
+              )}
+
               {/* Fretboard + Sheet */}
-              {song && (
+              {!isTranscribing && song && (
                 <>
                   <section>
                     <h2 className="mb-3 text-sm font-medium text-gray-500">Fretboard</h2>

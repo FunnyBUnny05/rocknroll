@@ -298,14 +298,52 @@ export async function transcribeSpotifyTrack(
     let confidence = 0.5;
     let lyricsAligned: { time: number; text: string }[] | undefined = undefined;
 
+    interface DeepSeekRawEvent {
+        start_ms: number;
+        end_ms: number;
+        chord_name: string;
+        tab_positions: string;
+        technique: 'slide' | 'bend' | 'none';
+    }
+
     interface DeepSeekResult {
         tuning: string;
-        events: SongEvent[];
+        events: DeepSeekRawEvent[];
         lyricsAligned?: { time: number; text: string }[];
+    }
+
+    function parseTab(tabStr: string, durationSec: number) {
+        const notes: { string: 1 | 2 | 3 | 4 | 5 | 6, fret: number, duration: number }[] = [];
+        const mutedStrings: number[] = [];
+        if (!tabStr || tabStr.length !== 6) return { notes, mutedStrings };
+        for (let i = 0; i < 6; i++) {
+            const char = tabStr[i];
+            const stringNum = (6 - i) as 1 | 2 | 3 | 4 | 5 | 6;
+            if (char.toLowerCase() === 'x') {
+                mutedStrings.push(stringNum);
+            } else if (char !== '-') {
+                const fret = parseInt(char, 10);
+                if (!isNaN(fret)) {
+                    notes.push({ string: stringNum, fret, duration: durationSec });
+                }
+            }
+        }
+        return { notes, mutedStrings };
     }
 
     try {
         const { deepseekApiKey, level } = useSettingsStore.getState();
+
+        const CACHE_VERSION = 'v2'; // Bump this when changing DeepSeek JSON schema
+        const cacheKey = `rocknroll-transcription-${CACHE_VERSION}-${trackId}-${level}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            try {
+                return JSON.parse(cached);
+            } catch (e) {
+                // Ignore invalid cache
+            }
+        }
 
         // Try Audio Analysis API
         const [analysis, features] = await Promise.allSettled([
@@ -334,17 +372,47 @@ export async function transcribeSpotifyTrack(
                     duration: durationMs / 1000,
                     bpm,
                     timeSignature,
-                    keyEstimates: data.sections.map(s => s.key).filter((v, i, a) => a.indexOf(v) === i)
+                    key: data.sections[0]?.key || 0,
+                    mode: data.sections[0]?.mode || 1, // 1 = major, 0 = minor
+                    segments: data.segments.map(s => ({
+                        start_ms: Math.round(s.start * 1000),
+                        end_ms: Math.round((s.start + s.duration) * 1000),
+                        pitches: s.pitches.map(p => Number(p.toFixed(3))),
+                        timbre: s.timbre.map(t => Number(t.toFixed(2)))
+                    }))
                 };
 
                 const dsResult = await generateGuitarInstructions(trackName, artistName, summary) as unknown as DeepSeekResult;
 
-                // The prompt uses generic 'events', so we map them to both for now or just the selected one
-                const resultEvents: SongEvent[] = dsResult.events || [];
+                const parsedEvents: SongEvent[] = [];
+                for (const raw of (dsResult.events || [])) {
+                    // Anti-Flicker Logic: Drop events shorter than 150ms
+                    if (raw.end_ms - raw.start_ms < 150) continue;
+
+                    const timeSec = raw.start_ms / 1000;
+                    const durSec = (raw.end_ms - raw.start_ms) / 1000;
+                    const parsed = parseTab(raw.tab_positions, durSec);
+
+                    parsedEvents.push({
+                        time: timeSec,
+                        duration: durSec,
+                        type: parsed.notes.length > 2 ? 'chord' : 'tab',
+                        chord: {
+                            name: raw.chord_name,
+                            symbol: raw.chord_name,
+                            placements: parsed.notes.map((n, i) => ({
+                                string: n.string, fret: n.fret, finger: (i < 4 ? i + 1 : 0) as 0 | 1 | 2 | 3 | 4
+                            })),
+                            mutedStrings: parsed.mutedStrings
+                        },
+                        notes: parsed.notes
+                    });
+                }
+
                 lyricsAligned = dsResult.lyricsAligned;
 
                 if (level === 'Beginner') {
-                    chordEvents = resultEvents;
+                    chordEvents = parsedEvents;
                     // Provide a simple tab fallback from chords
                     tabEvents = chordEvents.map(evt => ({
                         time: evt.time,
@@ -357,9 +425,8 @@ export async function transcribeSpotifyTrack(
                         })) ?? [],
                     }));
                 } else {
-                    tabEvents = resultEvents;
-                    chordEvents = resultEvents.filter((e) => e.type === 'chord');
-                    // Ensure all tab notes are mapped back into chord format if they exist
+                    tabEvents = parsedEvents;
+                    chordEvents = parsedEvents.filter((e) => e.type === 'chord');
                 }
             } else {
                 // Legacy analysis logic
@@ -376,16 +443,42 @@ export async function transcribeSpotifyTrack(
                 duration: durationMs / 1000,
                 bpm,
                 timeSignature,
-                keyEstimates: [0] // C Major default
+                key: 0,
+                mode: 1,
+                segments: [] // empty fallback
             };
 
             const dsResult = await generateGuitarInstructions(trackName, artistName, mockSummary) as unknown as DeepSeekResult;
 
-            const resultEvents: SongEvent[] = dsResult.events || [];
+            const parsedEvents: SongEvent[] = [];
+            for (const raw of (dsResult.events || [])) {
+                // Anti-Flicker Logic: Drop events shorter than 150ms
+                if (raw.end_ms - raw.start_ms < 150) continue;
+
+                const timeSec = raw.start_ms / 1000;
+                const durSec = (raw.end_ms - raw.start_ms) / 1000;
+                const parsed = parseTab(raw.tab_positions, durSec);
+
+                parsedEvents.push({
+                    time: timeSec,
+                    duration: durSec,
+                    type: parsed.notes.length > 2 ? 'chord' : 'tab',
+                    chord: {
+                        name: raw.chord_name,
+                        symbol: raw.chord_name,
+                        placements: parsed.notes.map((n, i) => ({
+                            string: n.string, fret: n.fret, finger: (i < 4 ? i + 1 : 0) as 0 | 1 | 2 | 3 | 4
+                        })),
+                        mutedStrings: parsed.mutedStrings
+                    },
+                    notes: parsed.notes
+                });
+            }
+
             lyricsAligned = dsResult.lyricsAligned;
 
             if (level === 'Beginner') {
-                chordEvents = resultEvents;
+                chordEvents = parsedEvents;
                 tabEvents = chordEvents.map(evt => ({
                     time: evt.time,
                     duration: evt.duration,
@@ -397,8 +490,8 @@ export async function transcribeSpotifyTrack(
                     })) ?? [],
                 }));
             } else {
-                tabEvents = resultEvents;
-                chordEvents = resultEvents.filter((e) => e.type === 'chord');
+                tabEvents = parsedEvents;
+                chordEvents = parsedEvents.filter((e) => e.type === 'chord');
             }
             engine = 'deepseek-' + level + '-fallback';
             confidence = 0.7;
@@ -423,7 +516,7 @@ export async function transcribeSpotifyTrack(
         }));
     }
 
-    return {
+    const finalSong = {
         id: `spotify- ${trackId}`,
         title: trackName,
         artist: artistName,
@@ -444,6 +537,17 @@ export async function transcribeSpotifyTrack(
             transcribedAt: new Date().toISOString(),
         },
     };
+
+    try {
+        const { deepseekApiKey, level } = useSettingsStore.getState();
+        const CACHE_VERSION = 'v2';
+        const cacheKey = `rocknroll-transcription-${CACHE_VERSION}-${trackId}-${level}`;
+        localStorage.setItem(cacheKey, JSON.stringify(finalSong));
+    } catch (e) {
+        // ignore storage full errors
+    }
+
+    return finalSong;
 }
 
 /** Get a human-readable pitch name from chroma index */

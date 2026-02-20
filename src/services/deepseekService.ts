@@ -18,74 +18,33 @@ export async function generateGuitarInstructions(
     dangerouslyAllowBrowser: true
   });
 
-  const beginnerPrompt = `You are a helpful guitar teacher for absolute beginners. Convert the provided song data into ONLY easy open chords (G, C, D, Em, Am). If the song has complex barre chords, replace them with the simplest 3-string versions. Ignore fast lead parts; provide a simple 4/4 rhythm strumming pattern.
+  const beginnerPrompt = `You are a master transcriber. Using the provided chroma intensity for these timestamps, determine the most likely guitar chord voicing.
+Cross-reference the timbre data to identify if a segment is a 'Strum' (Chords) or a 'Pluck' (Tabs). 
+Anchor your deductions using the provided track key and mode.
+MUST ONLY RETURN OPEN CHORDS (e.g., G, C, D, Em, Am). Replace complex barre chords with the simplest 3-string versions.
 Output valid JSON matching this schema exactly:
 {
   "tuning": "Standard",
   "events": [
-    {
-      "time": 0.0,
-      "duration": 4.0,
-      "type": "chord",
-      "chord": {
-        "name": "G Major",
-        "symbol": "G",
-        "placements": [{ "string": 6, "fret": 3, "finger": 2 }],
-        "mutedStrings": []
-      }
-    }
-  ],
-  "lyricsAligned": [
-    { "time": 0.0, "text": "lyrics line" }
+    { "start_ms": 0, "end_ms": 500, "chord_name": "G", "tab_positions": "320003", "technique": "none" }
   ]
-}`;
+}
+Note: 'tab_positions' must be a 6-character string representing frets from low E to high e, use 'x' for muted strings. Use '-' if a string is not played but not explicitly muted.`;
 
-  const normalPrompt = `You are a professional session guitarist transcribing a song note-for-note. Provide an extremely accurate transcription.
-CRITICAL INSTRUCTIONS FOR TABS:
-1. DO NOT output block chords when playing a riff, melody, or solo.
-2. Output individual, sequential notes representing the lead guitar melody.
-3. Each distinct note MUST be its own separate event with type: "tab".
-4. Space the notes out accurately using the "time" property (e.g., 0.0, 0.5, 1.0) so they render sequentially in tablature.
-5. Provide dozens of events representing the actual strumming/picking pattern, not just one per measure.
-
+  const normalPrompt = `You are a master transcriber. Using the provided chroma intensity for these timestamps, determine the most likely guitar chord voicing.
+Cross-reference the timbre data to identify if a segment is a 'Strum' (Chords) or a 'Pluck' (Tabs). 
+Anchor your deductions using the provided track key and mode.
+Return the exact voicings from the record. Lead notes should still be mapped within the nearest chord shape where possible, or with single notes represented like x-x-x-x-5-x.
 Output valid JSON matching this schema exactly:
 {
-  "tuning": "STANDARD (or detected)",
+  "tuning": "Standard",
   "events": [
-    {
-      "time": 0.0,
-      "duration": 0.25,
-      "type": "tab",
-      "notes": [ { "string": 6, "fret": 0, "duration": 0.25 } ]
-    },
-    {
-      "time": 0.25,
-      "duration": 0.25,
-      "type": "tab",
-      "notes": [ { "string": 5, "fret": 2, "duration": 0.25 } ]
-    },
-    {
-      "time": 0.5,
-      "duration": 0.5,
-      "type": "tab",
-      "notes": [ { "string": 4, "fret": 2, "duration": 0.5 } ]
-    },
-    {
-      "time": 4.0,
-      "duration": 4.0,
-      "type": "chord",
-      "chord": {
-        "name": "E Minor",
-        "symbol": "Em",
-        "placements": [{ "string": 5, "fret": 2, "finger": 1 }, { "string": 4, "fret": 2, "finger": 2 }],
-        "mutedStrings": []
-      }
-    }
-  ],
-  "lyricsAligned": [
-    { "time": 0.0, "text": "lyrics line" }
+    { "start_ms": 0, "end_ms": 500, "chord_name": "G", "tab_positions": "320003", "technique": "none" }
   ]
-}`;
+}
+Note: 'tab_positions' must be a 6-character string representing frets from low E to high e, use 'x' for muted strings. Use '-' if a string is not played but not explicitly muted.`;
+
+
 
   const systemPrompt = level === 'Beginner' ? beginnerPrompt : normalPrompt;
 

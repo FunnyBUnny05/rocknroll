@@ -6,7 +6,7 @@
  */
 
 import { Fretboard2D } from './Fretboard2D';
-import { SongSheet } from '../ui/SongSheet';
+import { TabRoll } from '../ui/TabRoll';
 import { useAppStore } from '../../store/useAppStore';
 import type { ViewMode } from '../../store/useAppStore';
 
@@ -46,14 +46,12 @@ export function FretboardPanel() {
         <Fretboard2D activeEvent={activeEvent} viewMode={viewMode} />
       </div>
 
-      {/* Song Sheet */}
+      {/* Tab Roll Scroller */}
       {events.length > 0 && (
-        <SongSheet
-          events={events}
-          activeEvent={activeEvent}
-          viewMode={viewMode}
-          lyricsAligned={song?.lyricsAligned}
-        />
+        <div className="mt-8">
+          <h3 className="text-sm font-medium text-gray-500 mb-2">Tab Roll</h3>
+          <TabRoll events={events} />
+        </div>
       )}
     </div>
   );
@@ -75,8 +73,8 @@ function ToggleButton({
     <button
       onClick={() => onClick(mode)}
       className={`rounded-md px-4 py-1.5 text-xs font-bold tracking-wide ${isActive
-          ? 'bg-green-600 text-white'
-          : 'text-gray-400 hover:text-white'
+        ? 'bg-green-600 text-white'
+        : 'text-gray-400 hover:text-white'
         }`}
     >
       {label}
