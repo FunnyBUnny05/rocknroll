@@ -539,7 +539,7 @@ export async function transcribeSpotifyTrack(
     };
 
     try {
-        const { deepseekApiKey, level } = useSettingsStore.getState();
+        const { level } = useSettingsStore.getState();
         const CACHE_VERSION = 'v2';
         const cacheKey = `rocknroll-transcription-${CACHE_VERSION}-${trackId}-${level}`;
         localStorage.setItem(cacheKey, JSON.stringify(finalSong));
