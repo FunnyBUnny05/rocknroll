@@ -1,5 +1,5 @@
 import { useSettingsStore } from '../store/useSettingsStore';
-import type { Song, SheetSection, TranscriptionUncertainty } from '../types/song';
+import type { Song, SheetSection } from '../types/song';
 import { buildVoicingMap } from './chordVoicings';
 
 interface MLBackendSheetResult {
