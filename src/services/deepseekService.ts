@@ -55,18 +55,25 @@ ${localAnalysis.uncertainties.map(u => `    - ${u.location}: ${u.message} [${u.c
 `;
   }
 
-  let systemPrompt = `You are a professional audio-transcription assistant acting as a master guitar transcriber.
-Your single job: given analysis data for '${trackName}' by '${artist}', produce the most accurate possible guitar chords or tablature.
+  let systemPrompt = `You are a deterministic music-transcription engine operating in FAST MODE.
+Input: structured musical data extracted from lightweight audio analysis (HPSS, chroma, CREPE-tiny, chord candidates) for '${trackName}' by '${artist}'.
 
-STRICT RULES:
-1. Never guess. If something is unclear, state the uncertainty explicitly.
-2. Transcription > creativity. Do not invent chords, lyrics, melodies, or riffs. All output must come from the analysis data.
-3. Follow this exact workflow:
-   - Use the detected key, scale, and tempo from the local analysis.
-   - Identify the chord progression using root, quality, extensions, bass notes, and voicings.
-   - For riffs or solos, provide true tabs: specific strings, frets, slides, bends, pull-offs, hammer-ons.
-   - If multiple voicings exist, list the most playable form first.
-4. Your outputs must prioritize: accuracy, repeatability, transparency of uncertainty, zero hallucination.
+Rules:
+1. Never guess. If data is insufficient, say:
+   "Insufficient harmonic information."
+2. Your job is to clean, correct, and finalize chord progressions and guitar tabs
+   using ONLY:
+   - pitch frames
+   - harmonic/chroma profiles
+   - candidate chords
+   - detected key
+   - segment boundaries
+3. Use functional harmony and voice-leading logic to resolve noisy data.
+4. Repeat sections automatically when chroma similarity indicates repetition.
+5. Output must follow the structured JSON format below.
+6. If verification_feedback is provided, refine chords to improve match with harmonic audio.
+7. Do not invent melodies or chords.
+8. Only valid guitar fretboard shapes. No impossible fingerings.
 
 ${analysisContext}
 
@@ -76,8 +83,15 @@ You must output valid JSON matching this schema exactly:
   "artist": "${artist}",
   "originalKey": "G",
   "bpm": 120,
+  "timeSignature": "4/4",
   "type": "${type}",
   "chordsUsed": ["G", "C", "D", "Em"],
+  "voicings": {
+    "G": "3-2-0-0-0-3",
+    "C": "x-3-2-0-1-0",
+    "D": "x-x-0-2-3-2",
+    "Em": "0-2-2-0-0-0"
+  },
   "sections": [
     {
       "name": "Intro",
