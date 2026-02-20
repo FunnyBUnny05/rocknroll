@@ -50,7 +50,9 @@ export async function transcribeSpotifyTrack(
 
         // Use FormData to match the Backend's expected format
         const formData = new FormData();
-        formData.append("spotify_url", trackUri); // Or send preview_url if available
+        // Send a plain text search string (e.g. "Wonderwall Oasis") instead of a Spotify URI
+        // so the backend can correctly search SoundCloud for the audio track.
+        formData.append("spotify_url", `${trackName} ${artistName}`);
 
         const response = await fetch("http://localhost:8000/api/transcribe", {
             method: "POST",

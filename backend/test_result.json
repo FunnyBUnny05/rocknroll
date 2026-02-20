@@ -1,1 +1,1 @@
-{"detail":"Pipeline failed: ANTHROPIC_API_KEY environment variable is not set."}
+{"success":true,"sheet":{"confidence":0.87,"type":"chord","title":"Unknown Title","artist":"Unknown Artist","originalKey":"D","bpm":117,"chordsUsed":["D","G","Bm","A","Em"],"sections":[{"name":"Intro","content":"[G] [D] [Bm] [A]"},{"name":"Verse 1","content":"[G] [D] [Bm] [A] [G] [Em] [A] [Em]"},{"name":"Verse 2","content":"[D] [D] [G] [Bm] [A] [G] [Em] [A]"},{"name":"Chorus","content":"[Em] [A] [Em] [Bm] [Em] [A] [Bm] [A]"}]}}

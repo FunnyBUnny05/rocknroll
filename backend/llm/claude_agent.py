@@ -58,7 +58,7 @@ Please revise your chords in these specific segments to better align with the pi
     print(f"Claude Agent: Dispatching prompt (Feedback Loop: {bool(verification_feedback)})...")
     
     response = client.messages.create(
-        model="claude-3-7-sonnet-20250219",
+        model="claude-sonnet-4-6",
         max_tokens=4000,
         temperature=0.1,
         system=system_prompt,
