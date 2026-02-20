@@ -377,7 +377,7 @@ function groupSegments(
 // ── Section mapping ─────────────────────────────────────────────────────
 
 /** Map a generic section index to a conventional name */
-function inferSectionName(section: SpotifySection, index: number, total: number): string {
+function inferSectionName(_section: SpotifySection, index: number, total: number): string {
   // Spotify doesn't label sections; use heuristics based on position/loudness
   if (index === 0) return 'Intro';
   if (index === total - 1) return 'Outro';
