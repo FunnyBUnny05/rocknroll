@@ -11,8 +11,10 @@ interface DeepSeekSheetResult {
     artist: string;
     originalKey: string;
     bpm: number;
+    timeSignature?: string;
     type: 'chord' | 'tab';
     chordsUsed: string[];
+    voicings?: Record<string, string>;
     sections: SheetSection[];
     uncertainties?: { location: string; message: string; candidates: string[]; confidences: number[] }[];
 }
@@ -112,7 +114,13 @@ export async function transcribeSpotifyTrack(
         );
 
         // 5. Build guitar voicings for all detected chords
+        //    AI voicings override defaults (more song-specific positions)
         const voicings = buildVoicingMap(allChords);
+        if (dsResult.voicings) {
+            for (const [chord, shape] of Object.entries(dsResult.voicings)) {
+                voicings[chord] = shape;
+            }
+        }
 
         // 6. Merge uncertainties from local analysis + DeepSeek
         const uncertainties = mergeUncertainties(
@@ -123,6 +131,14 @@ export async function transcribeSpotifyTrack(
         // 7. Determine final key/scale
         const finalKey = dsResult.originalKey || localAnalysis?.key.note || 'C';
         const finalScale = localAnalysis?.key.scale || [];
+
+        // Parse AI time signature (e.g. "4/4") if available
+        if (dsResult.timeSignature) {
+            const parts = dsResult.timeSignature.split('/').map(Number);
+            if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
+                timeSignature = [parts[0], parts[1]];
+            }
+        }
 
         // 8. Map to Song model
         const finalSong: Song = {
