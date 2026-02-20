@@ -51,3 +51,8 @@ models/
 .env
 .env.local
 .env.*.local
+
+# Python virtual environments
+venv/
+venv*
+.venv/

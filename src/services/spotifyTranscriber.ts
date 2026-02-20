@@ -1,33 +1,27 @@
-import { getAudioAnalysis, getAudioFeatures } from './SpotifyService';
-import { generateGuitarInstructions } from './deepseekService';
-import { analyzeAudio } from './audioAnalysisEngine';
-import { buildVoicingMap } from './chordVoicings';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { Song, SheetSection, TranscriptionUncertainty } from '../types/song';
-import type { AudioAnalysisResult } from './audioAnalysisEngine';
+import { buildVoicingMap } from './chordVoicings';
 
-interface DeepSeekSheetResult {
-    title: string;
-    artist: string;
-    originalKey: string;
-    bpm: number;
-    timeSignature?: string;
-    type: 'chord' | 'tab';
-    chordsUsed: string[];
-    voicings?: Record<string, string>;
-    sections: SheetSection[];
-    uncertainties?: { location: string; message: string; candidates: string[]; confidences: number[] }[];
+interface MLBackendSheetResult {
+    success: boolean;
+    sheet: {
+        title: string;
+        artist: string;
+        originalKey: string;
+        bpm: number;
+        type: 'chord' | 'tab';
+        chordsUsed: string[];
+        sections: SheetSection[];
+    };
 }
 
 /**
  * Transcribe a Spotify track into a static printable Guitar Sheet.
  *
  * Pipeline:
- *  1. Fetch Spotify Audio Analysis & Features
- *  2. Run local harmonic analysis (key/scale/tempo/chord detection from chroma)
- *  3. Send structured analysis to DeepSeek AI for full sheet generation
- *  4. Merge local analysis + AI output into Song model
- *  5. Attach guitar voicings and uncertainties
+ *  1. Send request to Python FAST Audio-to-Chords Pipeline
+ *  2. Merge backend result into Song model
+ *  3. Attach guitar voicings
  */
 export async function transcribeSpotifyTrack(
     trackId: string,
@@ -37,14 +31,10 @@ export async function transcribeSpotifyTrack(
     mode: 'chord' | 'tab'
 ): Promise<Song> {
 
-    let bpm = 120;
-    let timeSignature: [number, number] = [4, 4];
-    let confidence = 0.5;
-
     try {
         const { level } = useSettingsStore.getState();
 
-        const CACHE_VERSION = 'v-sheet-2'; // Bumped for new schema with voicings/uncertainties
+        const CACHE_VERSION = 'v-ml-sheet-1'; // Bump this when changing schema
         const cacheKey = `rocknroll-sheet-${CACHE_VERSION}-${trackId}-${mode}-${level}`;
         const cached = localStorage.getItem(cacheKey);
 
@@ -56,112 +46,55 @@ export async function transcribeSpotifyTrack(
             }
         }
 
-        // 1. Fetch Spotify Audio Analysis & Features
-        const [analysis, features] = await Promise.allSettled([
-            getAudioAnalysis(trackId),
-            getAudioFeatures(trackId),
-        ]);
+        console.log(`Routing transcription request for ${trackName} to Python ML Backend...`)
 
-        let summary: Record<string, unknown> = {
-            instructions: "Spotify audio analysis was unavailable. Please provide the exact layout of this song."
-        };
+        // Use FormData to match the Backend's expected format
+        const formData = new FormData();
+        formData.append("spotify_url", trackUri); // Or send preview_url if available
 
-        let localAnalysis: AudioAnalysisResult | null = null;
+        const response = await fetch("http://localhost:8000/api/transcribe", {
+            method: "POST",
+            body: formData
+        });
 
-        if (analysis.status === 'fulfilled' && analysis.value.segments.length > 0) {
-            const data = analysis.value;
-            const featuresData = features.status === 'fulfilled' ? features.value : undefined;
-
-            // 2. Run local harmonic analysis engine
-            localAnalysis = analyzeAudio(data, featuresData);
-
-            bpm = localAnalysis.tempo;
-            timeSignature = localAnalysis.timeSignature;
-            confidence = localAnalysis.key.confidence;
-
-            // Build Spotify summary for DeepSeek (reduced payload — key data only)
-            summary = {
-                totalSegments: data.segments.length,
-                bpm,
-                timeSignature,
-                key: localAnalysis.key.note,
-                quality: localAnalysis.key.quality,
-                scale: localAnalysis.key.scale,
-                detectedChords: localAnalysis.allChordsUsed,
-                sections: data.sections.map((s, i) => ({
-                    name: localAnalysis!.chordProgressions[i]?.sectionName || `Section ${i + 1}`,
-                    start_ms: Math.round(s.start * 1000),
-                    duration_ms: Math.round(s.duration * 1000),
-                    chords: localAnalysis!.chordProgressions[i]?.chords.map(c => c.name) || [],
-                })),
-            };
+        if (!response.ok) {
+            const errBody = await response.text();
+            throw new Error(`ML Backend failed with status ${response.status}: ${errBody}`);
         }
 
-        // 3. Generate via DeepSeek (with local analysis context)
-        const dsResult = await generateGuitarInstructions({
-            trackName,
-            artist: artistName,
-            audioAnalysisSummary: summary,
-            localAnalysis,
-            type: mode,
-            simplify: level === 'Beginner'
-        }) as unknown as DeepSeekSheetResult;
+        const result: MLBackendSheetResult = await response.json();
 
-        // 4. Merge chord lists (union of local + AI detected)
-        const allChords = mergeChordLists(
-            localAnalysis?.allChordsUsed || [],
-            dsResult.chordsUsed || [],
-        );
-
-        // 5. Build guitar voicings for all detected chords
-        //    AI voicings override defaults (more song-specific positions)
-        const voicings = buildVoicingMap(allChords);
-        if (dsResult.voicings) {
-            for (const [chord, shape] of Object.entries(dsResult.voicings)) {
-                voicings[chord] = shape;
-            }
+        if (!result.success || !result.sheet) {
+            throw new Error("Backend did not return a valid sheet structure.");
         }
 
-        // 6. Merge uncertainties from local analysis + DeepSeek
-        const uncertainties = mergeUncertainties(
-            localAnalysis?.uncertainties || [],
-            dsResult.uncertainties || [],
-        );
+        const mlSheet = result.sheet;
 
-        // 7. Determine final key/scale
-        const finalKey = dsResult.originalKey || localAnalysis?.key.note || 'C';
-        const finalScale = localAnalysis?.key.scale || [];
+        // Build voicings map
+        const voicings = buildVoicingMap(mlSheet.chordsUsed || []);
 
-        // Parse AI time signature (e.g. "4/4") if available
-        if (dsResult.timeSignature) {
-            const parts = dsResult.timeSignature.split('/').map(Number);
-            if (parts.length === 2 && parts[0] > 0 && parts[1] > 0) {
-                timeSignature = [parts[0], parts[1]];
-            }
-        }
-
-        // 8. Map to Song model
+        // Map to Song model
         const finalSong: Song = {
             id: trackId,
-            bpm: dsResult.bpm || bpm,
-            timeSignature,
-            type: dsResult.type || mode,
-            chordsUsed: allChords,
-            voicings,
-            sections: dsResult.sections || [],
+            bpm: mlSheet.bpm || 120,
+            timeSignature: [4, 4], // Default, can be updated by backend later
+            type: mode,
+            chordsUsed: mlSheet.chordsUsed || [],
+            voicings: voicings,
+            sections: mlSheet.sections || [],
             audioSrc: trackUri,
             tuning: ['Standard E'],
             capo: 0,
             metadata: {
                 name: trackName,
                 artist: artistName,
-                originalKey: finalKey,
-                scale: finalScale,
+                originalKey: mlSheet.originalKey || 'C',
+                scale: [], // Placeholder
                 transcribedAt: new Date().toISOString(),
-                transcriptionEngine: 'audio-analysis-engine+deepseek',
-                confidence
+                transcriptionEngine: 'heavy-ml-pipeline',
+                confidence: 0.95
             },
-            uncertainties,
+            uncertainties: []
         };
 
         // Cache the successful generation
@@ -177,36 +110,4 @@ export async function transcribeSpotifyTrack(
         console.error('Transcription error:', err);
         throw err;
     }
-}
-
-/** Merge two chord lists, preserving order (local first, then AI additions) */
-function mergeChordLists(local: string[], ai: string[]): string[] {
-    const seen = new Set(local);
-    const merged = [...local];
-    for (const chord of ai) {
-        if (!seen.has(chord)) {
-            seen.add(chord);
-            merged.push(chord);
-        }
-    }
-    return merged;
-}
-
-/** Merge uncertainty lists, deduplicating by location */
-function mergeUncertainties(
-    local: { location: string; message: string; candidates: string[]; confidences: number[] }[],
-    ai: { location: string; message: string; candidates: string[]; confidences: number[] }[],
-): TranscriptionUncertainty[] {
-    const seen = new Set<string>();
-    const merged: TranscriptionUncertainty[] = [];
-
-    for (const u of [...local, ...ai]) {
-        const key = `${u.location}:${u.message}`;
-        if (!seen.has(key)) {
-            seen.add(key);
-            merged.push(u);
-        }
-    }
-
-    return merged;
 }

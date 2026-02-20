@@ -1,0 +1,12 @@
+fastapi==0.109.2
+uvicorn==0.27.1
+pydantic==2.6.1
+essentia==2.1b6.dev1389
+librosa==0.10.1
+anthropic==0.19.1
+pretty_midi==0.2.10
+scipy==1.12.0
+python-multipart==0.0.9
+requests==2.31.0
+yt-dlp
+python-dotenv
